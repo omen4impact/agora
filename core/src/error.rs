@@ -28,6 +28,9 @@ pub enum Error {
     
     #[error("NAT traversal error: {0}")]
     Nat(String),
+    
+    #[error("Audio error: {0}")]
+    Audio(String),
 }
 
 pub type AgoraResult<T> = std::result::Result<T, Error>;

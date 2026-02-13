@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use agora_core::{Identity, NetworkNode, Room, RoomConfig, SessionKey, EncryptedChannel};
+use agora_core::{Identity, NetworkNode, Room, RoomConfig, SessionKey, EncryptedChannel, AudioPipeline, AudioConfig, AudioDevice};
 
 #[derive(Parser)]
 #[command(name = "agora")]
@@ -14,44 +14,47 @@ struct Cli {
 enum Commands {
     /// Generate a new identity
     Identity {
-        /// Display name for the identity
         #[arg(short, long)]
         name: Option<String>,
     },
     /// Create a new voice room
     CreateRoom {
-        /// Room name
         #[arg(short, long)]
         name: Option<String>,
-        /// Password protection
         #[arg(short, long)]
         password: Option<String>,
     },
     /// Start a network node
     StartNode {
-        /// Listen port (0 for random)
         #[arg(short, long, default_value = "0")]
         port: u16,
-        /// Bootstrap peers (multiaddr format)
         #[arg(short, long)]
         bootstrap: Option<String>,
-        /// Enable verbose logging
         #[arg(short, long)]
         verbose: bool,
     },
     /// Parse a room link
     ParseLink {
-        /// Room link to parse
         link: String,
     },
     /// Test encryption
     TestEncrypt {
-        /// Message to encrypt
         #[arg(short, long, default_value = "Hello, Agora!")]
         message: String,
     },
     /// Detect NAT type
     DetectNat,
+    /// List audio devices
+    ListAudioDevices,
+    /// Test audio pipeline
+    TestAudio {
+        /// Duration in seconds
+        #[arg(short, long, default_value = "5")]
+        duration: u64,
+        /// Enable noise suppression
+        #[arg(short, long)]
+        noise_suppression: bool,
+    },
 }
 
 #[tokio::main]
@@ -81,6 +84,12 @@ async fn main() {
         }
         Commands::DetectNat => {
             handle_detect_nat().await;
+        }
+        Commands::ListAudioDevices => {
+            handle_list_audio_devices();
+        }
+        Commands::TestAudio { duration, noise_suppression } => {
+            handle_test_audio(duration, noise_suppression).await;
         }
     }
 }
@@ -233,19 +242,16 @@ fn handle_test_encrypt(message: &str) {
     
     println!("Testing E2E encryption...\n");
     
-    // Generate ephemeral key
     let key_bytes = generate_ephemeral_key();
     let session_key = SessionKey::new(key_bytes);
     
     println!("Session Key: {}", hex::encode(key_bytes));
     println!("Fingerprint: {}", compute_fingerprint(&key_bytes));
     
-    // Create encrypted channel
     let mut channel = EncryptedChannel::new(session_key);
     
     println!("\nEncrypting: \"{}\"", message);
     
-    // Encrypt
     let encrypted = channel.encrypt(message.as_bytes())
         .expect("Encryption failed");
     
@@ -254,7 +260,6 @@ fn handle_test_encrypt(message: &str) {
     println!("  Ciphertext: {}", hex::encode(&encrypted.ciphertext));
     println!("  Tag:        {}", hex::encode(encrypted.tag));
     
-    // Decrypt
     let decrypted = channel.decrypt(&encrypted)
         .expect("Decryption failed");
     
@@ -262,14 +267,12 @@ fn handle_test_encrypt(message: &str) {
     
     println!("\nDecrypted: \"{}\"", decrypted_str);
     
-    // Test replay attack
     println!("\nTesting replay attack prevention...");
     match channel.decrypt(&encrypted) {
         Ok(_) => println!("  ERROR: Replay attack not detected!"),
         Err(e) => println!("  OK: Replay attack detected: {}", e),
     }
     
-    // Test key expiry
     use std::time::Duration;
     let short_key = SessionKey::with_expiry([42u8; 32], Duration::from_millis(10));
     assert!(!short_key.is_expired());
@@ -307,4 +310,103 @@ async fn handle_detect_nat() {
             println!("This is expected without actual STUN connectivity.");
         }
     }
+}
+
+fn handle_list_audio_devices() {
+    println!("Listing audio devices...\n");
+    
+    println!("📱 Input Devices:");
+    match AudioDevice::input_devices() {
+        Ok(devices) => {
+            if devices.is_empty() {
+                println!("  No input devices found");
+            } else {
+                for device in devices {
+                    let default_marker = if device.is_default { " (default)" } else { "" };
+                    println!("  • {}{}", device.name, default_marker);
+                    println!("    Channels: {}, Sample Rate: {} Hz", device.channels, device.sample_rate);
+                }
+            }
+        }
+        Err(e) => println!("  Error: {}", e),
+    }
+    
+    println!("\n🔊 Output Devices:");
+    match AudioDevice::output_devices() {
+        Ok(devices) => {
+            if devices.is_empty() {
+                println!("  No output devices found");
+            } else {
+                for device in devices {
+                    let default_marker = if device.is_default { " (default)" } else { "" };
+                    println!("  • {}{}", device.name, default_marker);
+                    println!("    Channels: {}, Sample Rate: {} Hz", device.channels, device.sample_rate);
+                }
+            }
+        }
+        Err(e) => println!("  Error: {}", e),
+    }
+}
+
+async fn handle_test_audio(duration: u64, noise_suppression: bool) {
+    println!("Testing audio pipeline for {} seconds...\n", duration);
+    
+    let config = AudioConfig {
+        enable_noise_suppression: noise_suppression,
+        ..AudioConfig::default()
+    };
+    
+    println!("Configuration:");
+    println!("  Sample rate: {} Hz", config.sample_rate);
+    println!("  Channels: {}", config.channels);
+    println!("  Frame size: {} samples ({} ms)", config.frame_size, config.frame_size as f32 / config.sample_rate as f32 * 1000.0);
+    println!("  Noise suppression: {}", if noise_suppression { "enabled" } else { "disabled" });
+    println!();
+    
+    let mut pipeline = AudioPipeline::new(config);
+    
+    println!("Starting audio capture...");
+    if let Err(e) = pipeline.start() {
+        println!("Failed to start audio pipeline: {}", e);
+        return;
+    }
+    
+    println!("🎤 Speak into your microphone...\n");
+    
+    let start = std::time::Instant::now();
+    let mut frame_count = 0u64;
+    let mut total_rms = 0.0f32;
+    
+    while start.elapsed().as_secs() < duration {
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        
+        if let Some(frame) = pipeline.capture_frame() {
+            frame_count += 1;
+            let rms = agora_core::audio::calculate_rms(&frame);
+            total_rms += rms;
+            
+            let db = agora_core::audio::calculate_db(rms);
+            let level = if db > -20.0 { "🔴" } else if db > -40.0 { "🟡" } else { "🟢" };
+            
+            print!("\r[Frame {:4}] RMS: {:.4} | dB: {:6.1} dB | {} ", frame_count, rms, db, level);
+            use std::io::Write;
+            std::io::stdout().flush().ok();
+        }
+    }
+    
+    println!("\n");
+    pipeline.stop();
+    
+    let stats = pipeline.get_stats();
+    println!("Audio Statistics:");
+    println!("  Frames processed: {}", stats.frames_processed);
+    println!("  Frames dropped: {}", stats.frames_dropped);
+    
+    if frame_count > 0 {
+        let avg_rms = total_rms / frame_count as f32;
+        let avg_db = agora_core::audio::calculate_db(avg_rms);
+        println!("  Average level: {:.1} dB", avg_db);
+    }
+    
+    println!("\n✓ Audio test complete");
 }

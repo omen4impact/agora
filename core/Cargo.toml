@@ -21,6 +21,9 @@ multibase.workspace = true
 sha2.workspace = true
 hex = "0.4"
 urlencoding = "2.1"
+cpal.workspace = true
+rubato.workspace = true
+hound.workspace = true
 
 [dev-dependencies]
 tokio-test = "0.4"

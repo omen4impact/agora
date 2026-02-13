@@ -23,7 +23,8 @@ agora/
 - [x] CLI testing tool
 - [x] NAT traversal framework (AutoNAT, DCUtR, STUN)
 - [x] End-to-end encryption framework (Session keys, replay protection)
-- [ ] Audio pipeline (Opus, RNNoise)
+- [x] Audio pipeline (cpal, noise gate, audio mixing)
+- [ ] Opus codec integration
 - [ ] Dynamic mixer selection
 - [ ] Desktop UI (Tauri)
 - [ ] Mobile app (Flutter FFI)
@@ -35,7 +36,7 @@ agora/
 - Rust 1.70+
 - Node.js 18+ (for Tauri)
 - Flutter 3.0+ (for Mobile)
-- GTK dependencies: `sudo apt install libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev`
+- Linux: `sudo apt install libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libasound2-dev`
 
 ### CLI Tool
 
@@ -57,6 +58,12 @@ cargo run -p agora-cli -- test-encrypt --message "Hello, Agora!"
 
 # Detect NAT type
 cargo run -p agora-cli -- detect-nat
+
+# List audio devices
+cargo run -p agora-cli -- list-audio-devices
+
+# Test audio (5 seconds)
+cargo run -p agora-cli -- test-audio --duration 5 --noise-suppression
 ```
 
 ### Build & Run
@@ -104,14 +111,36 @@ See [shape-up-phase1.md](./shape-up-phase1.md) for detailed planning.
   - Key derivation for encryption
   - Fingerprint verification
 
+### Cycle 3 ✅ Complete
+- [x] Audio pipeline
+  - cpal integration for cross-platform audio
+  - Input/output device enumeration
+  - Real-time audio capture and playback
+  - Noise gate for background noise reduction
+  - Audio mixing for multiple streams
+  - RMS and dB level calculation
+  - Audio normalization
+  - Resampling support
+
 ## Test Coverage
 
 ```
-17 tests passing:
+24 tests passing:
 - Identity: generation, serialization, signing
 - Room: creation, links, passwords
 - NAT: type detection, hole punch capability
 - Crypto: encrypt/decrypt, replay protection, key expiry
+- Audio: config, RMS, dB, normalize, mix, noise gate, resample
+```
+
+## Audio Pipeline
+
+```
+[Mikrofon] → [cpal capture] → [Noise Gate] → [Mixing]
+                                              ↓
+                                          [Network]
+                                              ↓
+[Mixing] ← [cpal playback] ← [Buffer] ← [Network]
 ```
 
 ## License
