@@ -1,5 +1,8 @@
 use clap::{Parser, Subcommand};
-use agora_core::{Identity, NetworkNode, Room, RoomConfig, SessionKey, EncryptedChannel, AudioPipeline, AudioConfig, AudioDevice};
+use agora_core::{
+    Identity, NetworkNode, Room, RoomConfig, SessionKey, EncryptedChannel, 
+    AudioPipeline, AudioConfig, AudioDevice, MixerManager, MixerConfig,
+};
 
 #[derive(Parser)]
 #[command(name = "agora")]
@@ -12,19 +15,16 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Generate a new identity
     Identity {
         #[arg(short, long)]
         name: Option<String>,
     },
-    /// Create a new voice room
     CreateRoom {
         #[arg(short, long)]
         name: Option<String>,
         #[arg(short, long)]
         password: Option<String>,
     },
-    /// Start a network node
     StartNode {
         #[arg(short, long, default_value = "0")]
         port: u16,
@@ -33,27 +33,25 @@ enum Commands {
         #[arg(short, long)]
         verbose: bool,
     },
-    /// Parse a room link
     ParseLink {
         link: String,
     },
-    /// Test encryption
     TestEncrypt {
         #[arg(short, long, default_value = "Hello, Agora!")]
         message: String,
     },
-    /// Detect NAT type
     DetectNat,
-    /// List audio devices
     ListAudioDevices,
-    /// Test audio pipeline
     TestAudio {
-        /// Duration in seconds
         #[arg(short, long, default_value = "5")]
         duration: u64,
-        /// Enable noise suppression
         #[arg(short, long)]
         noise_suppression: bool,
+    },
+    TestMixer {
+        /// Number of simulated participants
+        #[arg(short, long, default_value = "6")]
+        participants: usize,
     },
 }
 
@@ -67,38 +65,22 @@ async fn main() {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Identity { name } => {
-            handle_identity(name).await;
-        }
-        Commands::CreateRoom { name, password } => {
-            handle_create_room(name, password).await;
-        }
-        Commands::StartNode { port, bootstrap, verbose } => {
-            handle_start_node(port, bootstrap, verbose).await;
-        }
-        Commands::ParseLink { link } => {
-            handle_parse_link(&link);
-        }
-        Commands::TestEncrypt { message } => {
-            handle_test_encrypt(&message);
-        }
-        Commands::DetectNat => {
-            handle_detect_nat().await;
-        }
-        Commands::ListAudioDevices => {
-            handle_list_audio_devices();
-        }
-        Commands::TestAudio { duration, noise_suppression } => {
-            handle_test_audio(duration, noise_suppression).await;
-        }
+        Commands::Identity { name } => handle_identity(name).await,
+        Commands::CreateRoom { name, password } => handle_create_room(name, password).await,
+        Commands::StartNode { port, bootstrap, verbose } => handle_start_node(port, bootstrap, verbose).await,
+        Commands::ParseLink { link } => handle_parse_link(&link),
+        Commands::TestEncrypt { message } => handle_test_encrypt(&message),
+        Commands::DetectNat => handle_detect_nat().await,
+        Commands::ListAudioDevices => handle_list_audio_devices(),
+        Commands::TestAudio { duration, noise_suppression } => handle_test_audio(duration, noise_suppression).await,
+        Commands::TestMixer { participants } => handle_test_mixer(participants).await,
     }
 }
 
 async fn handle_identity(name: Option<String>) {
     println!("Generating new identity...\n");
     
-    let mut identity = Identity::generate()
-        .expect("Failed to generate identity");
+    let mut identity = Identity::generate().expect("Failed to generate identity");
     
     if let Some(n) = name {
         identity.set_display_name(n);
@@ -118,101 +100,67 @@ async fn handle_identity(name: Option<String>) {
 async fn handle_create_room(name: Option<String>, password: Option<String>) {
     println!("Creating new room...\n");
     
-    let identity = Identity::generate()
-        .expect("Failed to generate identity");
+    let identity = Identity::generate().expect("Failed to generate identity");
     
-    let config = RoomConfig {
-        name,
-        password,
-        max_participants: Some(20),
-    };
-    
+    let config = RoomConfig { name, password, max_participants: Some(20) };
     let room = Room::new(identity.peer_id(), config);
     
     println!("Room ID:    {}", room.id);
     println!("Share Link: {}", room.share_link());
     
-    if let Some(name) = &room.name {
-        println!("Name:       {}", name);
-    }
-    
-    if room.has_password() {
-        println!("Protected:  Yes");
-    } else {
-        println!("Protected:  No (public room)");
-    }
+    if let Some(name) = &room.name { println!("Name:       {}", name); }
+    println!("Protected:  {}", if room.has_password() { "Yes" } else { "No (public room)" });
 }
 
 async fn handle_start_node(port: u16, bootstrap: Option<String>, verbose: bool) {
     println!("Starting network node on port {}...\n", port);
     
     let listen_addr_str = format!("/ip4/0.0.0.0/tcp/{}", port);
-    let listen_addr = if port == 0 {
-        None
-    } else {
-        Some(listen_addr_str.as_str())
-    };
+    let listen_addr = if port == 0 { None } else { Some(listen_addr_str.as_str()) };
     
-    let mut node = NetworkNode::new(listen_addr).await
-        .expect("Failed to start network node");
-    
+    let mut node = NetworkNode::new(listen_addr).await.expect("Failed to start network node");
     println!("Local Peer ID: {}", node.peer_id_string());
     
     if let Some(bootstrap_addr) = bootstrap {
         println!("Connecting to bootstrap: {}", bootstrap_addr);
-        let addr = agora_core::network::parse_multiaddr(&bootstrap_addr)
-            .expect("Invalid bootstrap address");
-        if let Err(e) = node.dial(addr).await {
-            println!("Failed to connect to bootstrap: {}", e);
-        }
+        let addr = agora_core::network::parse_multiaddr(&bootstrap_addr).expect("Invalid bootstrap address");
+        if let Err(e) = node.dial(addr).await { println!("Failed to connect to bootstrap: {}", e); }
     }
     
     println!("\nListening for connections... (Ctrl+C to stop)");
-    println!("Features enabled: AutoNAT, DCUtR (hole punch), Kademlia DHT\n");
+    println!("Features: AutoNAT, DCUtR, Kademlia DHT\n");
     
     loop {
         if let Some(event) = node.next_event().await {
             match event {
-                agora_core::network::NetworkEvent::Listening(addr) => {
-                    println!("[LISTENING] {}", addr);
-                }
+                agora_core::network::NetworkEvent::Listening(addr) => println!("[LISTENING] {}", addr),
                 agora_core::network::NetworkEvent::PeerConnected { peer_id, addr } => {
-                    println!("[CONNECTED] {} at {}", peer_id, addr);
+                    println!("[CONNECTED] {} at {}", peer_id, addr)
                 }
                 agora_core::network::NetworkEvent::PeerDisconnected { peer_id, .. } => {
-                    println!("[DISCONNECTED] {}", peer_id);
+                    println!("[DISCONNECTED] {}", peer_id)
                 }
                 agora_core::network::NetworkEvent::PeerIdentified { peer_id, listen_addrs } => {
-                    println!("[IDENTIFIED] {} with {} addresses", peer_id, listen_addrs.len());
+                    println!("[IDENTIFIED] {} ({} addresses)", peer_id, listen_addrs.len());
                     if verbose {
-                        for addr in listen_addrs {
-                            println!("  - {}", addr);
-                        }
+                        for addr in listen_addrs { println!("  - {}", addr); }
                     }
                 }
                 agora_core::network::NetworkEvent::ProvidersFound { room_id, providers } => {
-                    println!("[PROVIDERS] Room {} has {} providers", room_id, providers.len());
+                    println!("[PROVIDERS] Room {} has {} providers", room_id, providers.len())
                 }
                 agora_core::network::NetworkEvent::PingResult { peer_id, result } => {
-                    match result {
-                        Ok(()) => {
-                            if verbose {
-                                println!("[PING] {} OK", peer_id);
-                            }
+                    if verbose || result.is_err() {
+                        match result {
+                            Ok(()) => println!("[PING] {} OK", peer_id),
+                            Err(e) => println!("[PING] {} FAILED: {}", peer_id, e),
                         }
-                        Err(e) => println!("[PING] {} FAILED: {}", peer_id, e),
                     }
                 }
                 agora_core::network::NetworkEvent::NatStatusChanged { is_public } => {
-                    if is_public {
-                        println!("[NAT] Public IP detected - direct connections possible");
-                    } else {
-                        println!("[NAT] Behind NAT - hole punching enabled");
-                    }
+                    println!("[NAT] {}", if is_public { "Public IP" } else { "Behind NAT - hole punching enabled" })
                 }
-                agora_core::network::NetworkEvent::BootstrapComplete => {
-                    println!("[BOOTSTRAP] Kademlia bootstrap complete");
-                }
+                agora_core::network::NetworkEvent::BootstrapComplete => println!("[BOOTSTRAP] Complete"),
             }
         }
     }
@@ -224,10 +172,9 @@ fn handle_parse_link(link: &str) {
     match agora_core::room::parse_room_link(link) {
         Some((room_id, password)) => {
             println!("Room ID:  {}", room_id);
-            if let Some(pwd) = password {
-                println!("Password: {}", pwd);
-            } else {
-                println!("Password: None (public room)");
+            match password {
+                Some(pwd) => println!("Password: {}", pwd),
+                None => println!("Password: None (public room)"),
             }
         }
         None => {
@@ -249,23 +196,17 @@ fn handle_test_encrypt(message: &str) {
     println!("Fingerprint: {}", compute_fingerprint(&key_bytes));
     
     let mut channel = EncryptedChannel::new(session_key);
-    
     println!("\nEncrypting: \"{}\"", message);
     
-    let encrypted = channel.encrypt(message.as_bytes())
-        .expect("Encryption failed");
+    let encrypted = channel.encrypt(message.as_bytes()).expect("Encryption failed");
     
     println!("\nEncrypted Message:");
     println!("  Nonce:      {}", encrypted.nonce);
     println!("  Ciphertext: {}", hex::encode(&encrypted.ciphertext));
     println!("  Tag:        {}", hex::encode(encrypted.tag));
     
-    let decrypted = channel.decrypt(&encrypted)
-        .expect("Decryption failed");
-    
-    let decrypted_str = String::from_utf8(decrypted).expect("Invalid UTF-8");
-    
-    println!("\nDecrypted: \"{}\"", decrypted_str);
+    let decrypted = channel.decrypt(&encrypted).expect("Decryption failed");
+    println!("\nDecrypted: \"{}\"", String::from_utf8(decrypted).expect("Invalid UTF-8"));
     
     println!("\nTesting replay attack prevention...");
     match channel.decrypt(&encrypted) {
@@ -285,25 +226,21 @@ async fn handle_detect_nat() {
     println!("Detecting NAT configuration...\n");
     
     use agora_core::NatTraversal;
-    
     let mut nat = NatTraversal::new(None);
     
     println!("STUN servers configured:");
-    for server in nat.get_stun_servers() {
-        println!("  - {}", server);
-    }
+    for server in nat.get_stun_servers() { println!("  - {}", server); }
     
     match nat.detect_nat_type().await {
         Ok(nat_type) => {
             println!("\nNAT Type: {:?}", nat_type);
             println!("Description: {}", nat_type.description());
             println!("Can hole punch: {}", nat_type.can_hole_punch());
-            
-            if !nat_type.can_hole_punch() {
-                println!("\n⚠ Your NAT type may require TURN relay for some connections.");
+            println!("\n{}", if !nat_type.can_hole_punch() {
+                "⚠ Your NAT type may require TURN relay for some connections."
             } else {
-                println!("\n✓ Direct P2P connections should work well.");
-            }
+                "✓ Direct P2P connections should work well."
+            });
         }
         Err(e) => {
             println!("\nNAT detection failed: {}", e);
@@ -318,12 +255,11 @@ fn handle_list_audio_devices() {
     println!("📱 Input Devices:");
     match AudioDevice::input_devices() {
         Ok(devices) => {
-            if devices.is_empty() {
-                println!("  No input devices found");
-            } else {
+            if devices.is_empty() { println!("  No input devices found"); }
+            else {
                 for device in devices {
-                    let default_marker = if device.is_default { " (default)" } else { "" };
-                    println!("  • {}{}", device.name, default_marker);
+                    let marker = if device.is_default { " (default)" } else { "" };
+                    println!("  • {}{}", device.name, marker);
                     println!("    Channels: {}, Sample Rate: {} Hz", device.channels, device.sample_rate);
                 }
             }
@@ -334,12 +270,11 @@ fn handle_list_audio_devices() {
     println!("\n🔊 Output Devices:");
     match AudioDevice::output_devices() {
         Ok(devices) => {
-            if devices.is_empty() {
-                println!("  No output devices found");
-            } else {
+            if devices.is_empty() { println!("  No output devices found"); }
+            else {
                 for device in devices {
-                    let default_marker = if device.is_default { " (default)" } else { "" };
-                    println!("  • {}{}", device.name, default_marker);
+                    let marker = if device.is_default { " (default)" } else { "" };
+                    println!("  • {}{}", device.name, marker);
                     println!("    Channels: {}, Sample Rate: {} Hz", device.channels, device.sample_rate);
                 }
             }
@@ -359,7 +294,7 @@ async fn handle_test_audio(duration: u64, noise_suppression: bool) {
     println!("Configuration:");
     println!("  Sample rate: {} Hz", config.sample_rate);
     println!("  Channels: {}", config.channels);
-    println!("  Frame size: {} samples ({} ms)", config.frame_size, config.frame_size as f32 / config.sample_rate as f32 * 1000.0);
+    println!("  Frame size: {} samples", config.frame_size);
     println!("  Noise suppression: {}", if noise_suppression { "enabled" } else { "disabled" });
     println!();
     
@@ -409,4 +344,130 @@ async fn handle_test_audio(duration: u64, noise_suppression: bool) {
     }
     
     println!("\n✓ Audio test complete");
+}
+
+async fn handle_test_mixer(participant_count: usize) {
+    println!("Testing Mixer Algorithm with {} participants...\n", participant_count);
+    
+    let config = MixerConfig::default();
+    println!("Configuration:");
+    println!("  Full-Mesh threshold: {}", config.full_mesh_threshold);
+    println!("  Rotation interval: {} min", config.rotation_interval.as_secs() / 60);
+    println!("  Score weights: BW={:.0}%, Stab={:.0}%, Res={:.0}%, Dur={:.0}%",
+        config.score_weights.bandwidth * 100.0,
+        config.score_weights.stability * 100.0,
+        config.score_weights.resources * 100.0,
+        config.score_weights.duration * 100.0,
+    );
+    println!();
+    
+    let mut manager = MixerManager::new("local_peer".to_string(), Some(config));
+    
+    println!("Adding {} participants...\n", participant_count);
+    
+    for i in 0..participant_count {
+        let peer_id = format!("peer_{}", i);
+        manager.add_participant(peer_id.clone());
+        
+        // Simulate different stats for each peer
+        let bandwidth = 1_000_000 + (i as u64 * 1_000_000);
+        let cpu = 20.0 + (i as f32 * 10.0) % 60.0;
+        let memory = 30.0 + (i as f32 * 5.0) % 40.0;
+        
+        manager.update_participant_stats(&peer_id, agora_core::mixer::ParticipantStats {
+            bandwidth_bps: bandwidth,
+            latency_ms: 20 + (i as u32 * 10),
+            latency_variance: (i as f32 * 0.1) % 50.0,
+            cpu_usage_percent: cpu,
+            memory_usage_percent: memory,
+            session_duration: std::time::Duration::from_secs((i as u64 + 1) * 600),
+            ..Default::default()
+        });
+    }
+    
+    let status = manager.get_status();
+    println!("Topology: {:?}", status.topology);
+    println!("Participant count: {}", status.participant_count);
+    
+    // Show all participants and their scores
+    println!("\nParticipant Scores:");
+    println!("┌─────────────┬───────────┬──────────┬─────────┬──────────┬────────┐");
+    println!("│ Peer ID     │ Bandwidth │ Latency  │ CPU %   │ Duration │ Score  │");
+    println!("├─────────────┼───────────┼──────────┼─────────┼──────────┼────────┤");
+    
+    for (peer_id, participant) in manager.get_participants() {
+        let bw = participant.stats.bandwidth_bps / 1_000_000;
+        let lat = participant.stats.latency_ms;
+        let cpu = participant.stats.cpu_usage_percent as u32;
+        let dur = participant.stats.session_duration.as_secs() / 60;
+        let score = participant.score;
+        
+        println!("│ {:11} │ {:4} Mbps │ {:4} ms  │ {:3} %   │ {:4} min  │ {:.4} │", 
+            peer_id, bw, lat, cpu, dur, score);
+    }
+    println!("└─────────────┴───────────┴──────────┴─────────┴──────────┴────────┘");
+    
+    // Local peer
+    println!("\nLocal peer (simulated):");
+    manager.update_local_stats(8_000_000, 25.0, 35.0);
+    println!("  Bandwidth: 8 Mbps, CPU: 25%, Memory: 35%");
+    
+    // Select mixer
+    let mixer = manager.select_mixer();
+    let status = manager.get_status();
+    
+    println!("\nSelected Mixer: {}", mixer.as_deref().unwrap_or("None"));
+    println!("Local is mixer: {}", status.is_local_mixer);
+    
+    // Show connection targets
+    let targets = manager.get_connection_targets();
+    println!("\nConnection targets ({:?} mode): {} targets", 
+        status.topology, targets.len());
+    
+    if status.topology == agora_core::mixer::TopologyMode::SFU {
+        println!("  Target: {}", targets.join(", "));
+    } else {
+        for target in &targets {
+            println!("  - {}", target);
+        }
+    }
+    
+    // Test rotation
+    println!("\n--- Testing Mixer Rotation ---");
+    let mixer_before = manager.get_current_mixer().map(|s| s.to_string());
+    println!("Current mixer: {:?}", mixer_before);
+    
+    // Manually rotate
+    let new_mixer = manager.rotate_mixer();
+    println!("After rotation: {:?}", new_mixer);
+    
+    if mixer_before.as_deref() != new_mixer.as_deref() {
+        println!("✓ Mixer changed successfully");
+    } else {
+        println!("⚠ Mixer stayed the same (might be the best candidate)");
+    }
+    
+    // Test tie resolution
+    println!("\n--- Testing Tie Resolution ---");
+    println!("When scores are within {:.0}% difference:", agora_core::mixer::SCORE_TIE_THRESHOLD * 100.0);
+    println!("Resolution: Select lexicographically smallest peer ID");
+    println!("This ensures all clients select the same mixer deterministically");
+    
+    // Test topology switching
+    println!("\n--- Testing Topology Switching ---");
+    let mut test_manager = MixerManager::new("test".to_string(), None);
+    
+    for i in 0..5 {
+        test_manager.add_participant(format!("p{}", i));
+        println!("Participants: {} -> Mode: {:?}", 
+            test_manager.get_participant_count(), 
+            test_manager.get_topology_mode());
+    }
+    
+    test_manager.add_participant("p6".to_string());
+    println!("Participants: {} -> Mode: {:?}", 
+        test_manager.get_participant_count(), 
+        test_manager.get_topology_mode());
+    
+    println!("\n✓ Mixer test complete");
 }
