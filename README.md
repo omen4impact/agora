@@ -9,6 +9,7 @@ agora/
 ├── core/           # Rust core library (libp2p, audio, crypto)
 ├── desktop/        # Tauri desktop app (Windows, macOS, Linux)
 ├── mobile/         # Flutter mobile app (iOS, Android)
+├── cli/            # Command-line testing tool
 ├── docs/           # Documentation
 └── tools/          # Build scripts and utilities
 ```
@@ -18,33 +19,54 @@ agora/
 - [x] Decentralized P2P networking via libp2p
 - [x] Cryptographic identity (Ed25519)
 - [x] Kademlia DHT for peer discovery
+- [x] Room system with shareable links
+- [x] CLI testing tool
 - [ ] NAT traversal (Hole punching, STUN/TURN)
 - [ ] End-to-end encryption (Noise Protocol)
 - [ ] Audio pipeline (Opus, RNNoise)
 - [ ] Dynamic mixer selection
 - [ ] Desktop UI (Tauri)
-- [ ] Mobile app (Flutter)
+- [ ] Mobile app (Flutter FFI)
 
 ## Quick Start
 
 ### Prerequisites
 
 - Rust 1.70+
-- Node.js 18+
-- Tauri CLI: `cargo install tauri-cli`
+- Node.js 18+ (for Tauri)
+- Flutter 3.0+ (for Mobile)
+- GTK dependencies: `sudo apt install libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev`
+
+### CLI Tool
+
+```bash
+# Generate identity
+cargo run -p agora-cli -- identity --name "YourName"
+
+# Create room
+cargo run -p agora-cli -- create-room --name "MyRoom"
+
+# Parse room link
+cargo run -p agora-cli -- parse-link "agora://room/abc123"
+
+# Start network node
+cargo run -p agora-cli -- start-node --port 4001
+```
 
 ### Build & Run
 
 ```bash
-# Build core library
+# Build everything
 cargo build
 
 # Run tests
 cargo test
 
-# Run desktop app (requires Tauri setup)
-cd desktop
-cargo tauri dev
+# Run desktop app
+cd desktop && cargo tauri dev
+
+# Run mobile app (requires Flutter)
+cd mobile && flutter run
 ```
 
 ## Development Model
@@ -55,13 +77,15 @@ See [shape-up-phase1.md](./shape-up-phase1.md) for detailed planning.
 
 ## Current Status
 
-**Cycle 1, Pitch 1.1**: libp2p Core Integration
+**Cycle 1, Pitch 1.1**: libp2p Core Integration ✅
 
 - [x] Project structure
-- [x] Identity system
-- [x] Basic network node
-- [ ] Room system integration
-- [ ] CLI testing tool
+- [x] Identity system (Ed25519)
+- [x] Basic network node (libp2p/Kademlia)
+- [x] Room system with links
+- [x] CLI testing tool
+- [x] Flutter mobile scaffold
+- [x] Tauri desktop scaffold
 
 ## License
 

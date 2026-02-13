@@ -1,0 +1,19 @@
+[package]
+name = "agora-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "agora"
+path = "src/main.rs"
+
+[dependencies]
+agora-core = { path = "../core" }
+tokio.workspace = true
+clap.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+serde_json.workspace = true
+hex.workspace = true

@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "core",
     "desktop",
+    "cli",
 ]
 
 [workspace.package]
@@ -37,3 +38,5 @@ ed25519-dalek = { version = "2", features = ["rand_core"] }
 rand = "0.8"
 multibase = "0.9"
 sha2 = "0.10"
+clap = { version = "4", features = ["derive"] }
+hex = "0.4"
