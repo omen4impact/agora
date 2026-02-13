@@ -1,0 +1,39 @@
+/target/
+/Cargo.lock
+**/*.rs.bk
+*.pdb
+
+# Tauri
+/desktop/src-tauri/target/
+/desktop/ui/dist/
+/desktop/ui/node_modules/
+
+# Flutter
+/mobile/.dart_tool/
+/mobile/.packages
+/mobile/.pub/
+/mobile/build/
+/mobile/.flutter-plugins
+/mobile/.flutter-plugins-dependencies
+/mobile/android/.gradle/
+/mobile/android/app/build/
+/mobile/ios/.symlinks/
+/mobile/ios/Pods/
+/mobile/ios/Podfile.lock
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets
+.env
+*.pem
+*.key
+credentials.json

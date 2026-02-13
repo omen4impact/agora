@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agora - P2P Voice Chat</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #eee;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .container {
+            max-width: 600px;
+            width: 100%;
+            padding: 2rem;
+        }
+        
+        .logo {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        
+        .logo h1 {
+            font-size: 3rem;
+            background: linear-gradient(135deg, #00d9ff, #00ff88);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .logo p {
+            color: #888;
+            margin-top: 0.5rem;
+        }
+        
+        .card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            padding: 2rem;
+            margin-bottom: 1rem;
+            backdrop-filter: blur(10px);
+        }
+        
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+            padding: 0.75rem;
+            background: rgba(0, 255, 136, 0.1);
+            border-radius: 8px;
+        }
+        
+        .status.disconnected {
+            background: rgba(255, 136, 0, 0.1);
+        }
+        
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #00ff88;
+        }
+        
+        .status.disconnected .status-dot {
+            background: #ff8800;
+        }
+        
+        .peer-id {
+            font-family: monospace;
+            font-size: 0.75rem;
+            color: #666;
+            word-break: break-all;
+            margin-top: 0.5rem;
+        }
+        
+        .actions {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+        
+        .btn {
+            padding: 1rem 2rem;
+            border: none;
+            border-radius: 12px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #00d9ff, #00ff88);
+            color: #1a1a2e;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 20px rgba(0, 217, 255, 0.3);
+        }
+        
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: #eee;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.15);
+        }
+        
+        .input-group {
+            margin-bottom: 1rem;
+        }
+        
+        .input-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: #aaa;
+            font-size: 0.875rem;
+        }
+        
+        .input-group input {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.05);
+            color: #eee;
+            font-size: 1rem;
+        }
+        
+        .input-group input:focus {
+            outline: none;
+            border-color: #00d9ff;
+        }
+        
+        .hidden {
+            display: none;
+        }
+        
+        .room-link {
+            background: rgba(0, 217, 255, 0.1);
+            border: 1px dashed #00d9ff;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-top: 1rem;
+            word-break: break-all;
+            font-family: monospace;
+        }
+        
+        .copy-btn {
+            background: transparent;
+            border: 1px solid #00d9ff;
+            color: #00d9ff;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            margin-top: 0.5rem;
+        }
+        
+        .copy-btn:hover {
+            background: rgba(0, 217, 255, 0.1);
+        }
+        
+        .settings-toggle {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            background: transparent;
+            border: none;
+            color: #666;
+            cursor: pointer;
+            font-size: 1.5rem;
+        }
+    </style>
+</head>
+<body>
+    <button class="settings-toggle" id="settingsBtn">⚙️</button>
+    
+    <div class="container" id="initScreen">
+        <div class="logo">
+            <h1>🔊 AGORA</h1>
+            <p>Decentralized P2P Voice Chat</p>
+        </div>
+        
+        <div class="card">
+            <div class="status disconnected" id="status">
+                <div class="status-dot"></div>
+                <span id="statusText">Initializing...</span>
+            </div>
+            <div class="peer-id" id="peerIdDisplay"></div>
+        </div>
+        
+        <div class="card">
+            <div class="input-group">
+                <label for="displayName">Display Name (optional)</label>
+                <input type="text" id="displayName" placeholder="Enter your name">
+            </div>
+        </div>
+        
+        <div class="card actions" id="mainActions">
+            <button class="btn btn-primary" id="createRoomBtn">🎙️ Create Room</button>
+            <button class="btn btn-secondary" id="joinRoomBtn">🔗 Join Room</button>
+        </div>
+        
+        <div class="card hidden" id="createRoomPanel">
+            <div class="input-group">
+                <label for="roomName">Room Name (optional)</label>
+                <input type="text" id="roomName" placeholder="My Voice Room">
+            </div>
+            <div class="input-group">
+                <label for="roomPassword">Password (optional)</label>
+                <input type="password" id="roomPassword" placeholder="Leave empty for public room">
+            </div>
+            <button class="btn btn-primary" id="createRoomConfirm">Create & Start</button>
+            <button class="btn btn-secondary" id="createRoomCancel">Cancel</button>
+        </div>
+        
+        <div class="card hidden" id="joinRoomPanel">
+            <div class="input-group">
+                <label for="roomLink">Room Link or ID</label>
+                <input type="text" id="roomLink" placeholder="agora://room/... or room ID">
+            </div>
+            <button class="btn btn-primary" id="joinRoomConfirm">Join Room</button>
+            <button class="btn btn-secondary" id="joinRoomCancel">Cancel</button>
+        </div>
+        
+        <div class="card hidden" id="roomCreatedPanel">
+            <h3>Room Created!</h3>
+            <p>Share this link with others:</p>
+            <div class="room-link" id="generatedLink"></div>
+            <button class="copy-btn" id="copyLinkBtn">📋 Copy Link</button>
+            <button class="btn btn-primary" id="startRoomBtn" style="margin-top: 1rem; width: 100%;">Start Voice Chat</button>
+        </div>
+    </div>
+
+    <script type="module">
+        const { invoke } = window.__TAURI__.core;
+        
+        const statusEl = document.getElementById('status');
+        const statusTextEl = document.getElementById('statusText');
+        const peerIdDisplayEl = document.getElementById('peerIdDisplay');
+        const displayNameInput = document.getElementById('displayName');
+        
+        const mainActionsEl = document.getElementById('mainActions');
+        const createRoomPanelEl = document.getElementById('createRoomPanel');
+        const joinRoomPanelEl = document.getElementById('joinRoomPanel');
+        const roomCreatedPanelEl = document.getElementById('roomCreatedPanel');
+        
+        async function init() {
+            try {
+                const peerId = await invoke('init_identity');
+                statusEl.classList.remove('disconnected');
+                statusTextEl.textContent = 'Ready';
+                peerIdDisplayEl.textContent = `Peer ID: ${peerId}`;
+            } catch (e) {
+                statusTextEl.textContent = `Error: ${e}`;
+                console.error(e);
+            }
+        }
+        
+        document.getElementById('createRoomBtn').addEventListener('click', () => {
+            mainActionsEl.classList.add('hidden');
+            createRoomPanelEl.classList.remove('hidden');
+        });
+        
+        document.getElementById('joinRoomBtn').addEventListener('click', () => {
+            mainActionsEl.classList.add('hidden');
+            joinRoomPanelEl.classList.remove('hidden');
+        });
+        
+        document.getElementById('createRoomCancel').addEventListener('click', () => {
+            createRoomPanelEl.classList.add('hidden');
+            mainActionsEl.classList.remove('hidden');
+        });
+        
+        document.getElementById('joinRoomCancel').addEventListener('click', () => {
+            joinRoomPanelEl.classList.add('hidden');
+            mainActionsEl.classList.remove('hidden');
+        });
+        
+        document.getElementById('createRoomConfirm').addEventListener('click', async () => {
+            const name = document.getElementById('roomName').value || null;
+            const password = document.getElementById('roomPassword').value || null;
+            
+            try {
+                const link = await invoke('create_room', { name, password });
+                document.getElementById('generatedLink').textContent = link;
+                createRoomPanelEl.classList.add('hidden');
+                roomCreatedPanelEl.classList.remove('hidden');
+            } catch (e) {
+                alert(`Failed to create room: ${e}`);
+            }
+        });
+        
+        document.getElementById('copyLinkBtn').addEventListener('click', () => {
+            const link = document.getElementById('generatedLink').textContent;
+            navigator.clipboard.writeText(link);
+            document.getElementById('copyLinkBtn').textContent = '✓ Copied!';
+            setTimeout(() => {
+                document.getElementById('copyLinkBtn').textContent = '📋 Copy Link';
+            }, 2000);
+        });
+        
+        document.getElementById('joinRoomConfirm').addEventListener('click', async () => {
+            const link = document.getElementById('roomLink').value;
+            if (!link) {
+                alert('Please enter a room link or ID');
+                return;
+            }
+            
+            try {
+                const roomId = await invoke('join_room', { roomLink: link });
+                alert(`Joining room: ${roomId}`);
+            } catch (e) {
+                alert(`Failed to join room: ${e}`);
+            }
+        });
+        
+        document.getElementById('startRoomBtn').addEventListener('click', async () => {
+            try {
+                const peerId = await invoke('start_network', { listenPort: null });
+                statusTextEl.textContent = 'Listening...';
+                alert(`Network started. Peer ID: ${peerId}`);
+            } catch (e) {
+                alert(`Failed to start network: ${e}`);
+            }
+        });
+        
+        displayNameInput.addEventListener('change', async () => {
+            const name = displayNameInput.value;
+            if (name) {
+                try {
+                    await invoke('set_display_name', { name });
+                } catch (e) {
+                    console.error('Failed to set display name:', e);
+                }
+            }
+        });
+        
+        init();
+    </script>
+</body>
+</html>

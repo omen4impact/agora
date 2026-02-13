@@ -1,0 +1,38 @@
+[workspace]
+resolver = "2"
+members = [
+    "core",
+    "desktop",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/agora-voice/agora"
+authors = ["Agora Contributors"]
+
+[workspace.dependencies]
+libp2p = { version = "0.53", features = [
+    "kad",
+    "noise",
+    "tcp",
+    "dns",
+    "tokio",
+    "yamux",
+    "identify",
+    "ping",
+    "relay",
+    "dcutr",
+    "autonat",
+] }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+rand = "0.8"
+multibase = "0.9"
+sha2 = "0.10"
