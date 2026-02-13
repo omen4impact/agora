@@ -24,4 +24,4 @@ pub enum Error {
     Config(String),
 }
 
-pub type Result<T> = std::result::Result<T, Error>;
+pub type AgoraResult<T> = std::result::Result<T, Error>;

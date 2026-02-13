@@ -6,4 +6,4 @@ pub mod error;
 pub use identity::Identity;
 pub use network::NetworkNode;
 pub use room::Room;
-pub use error::Result;
+pub use error::AgoraResult as Result;

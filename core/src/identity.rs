@@ -3,7 +3,7 @@ use rand::rngs::OsRng;
 use sha2::{Sha256, Digest};
 use multibase::Base;
 use serde::{Serialize, Deserialize};
-use crate::error::{Error, Result};
+use crate::error::{Error, AgoraResult};
 
 #[derive(Debug, Clone)]
 pub struct Identity {
@@ -19,7 +19,7 @@ pub struct PeerInfo {
 }
 
 impl Identity {
-    pub fn generate() -> Result<Self> {
+    pub fn generate() -> AgoraResult<Self> {
         let signing_key = SigningKey::generate(&mut OsRng);
         Ok(Self {
             signing_key,
@@ -27,7 +27,7 @@ impl Identity {
         })
     }
     
-    pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
+    pub fn from_bytes(bytes: &[u8]) -> AgoraResult<Self> {
         let signing_key = SigningKey::from_bytes(
             bytes.try_into()
                 .map_err(|_| Error::Identity("Invalid key bytes".to_string()))?
@@ -43,7 +43,8 @@ impl Identity {
     }
     
     pub fn peer_id(&self) -> String {
-        let public_key_bytes = self.signing_key.verifying_key().as_bytes();
+        let verifying_key = self.signing_key.verifying_key();
+        let public_key_bytes = verifying_key.as_bytes();
         let mut hasher = Sha256::new();
         hasher.update(public_key_bytes);
         let hash = hasher.finalize();

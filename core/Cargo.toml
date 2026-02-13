@@ -7,6 +7,8 @@ authors.workspace = true
 
 [dependencies]
 libp2p.workspace = true
+libp2p-swarm-derive.workspace = true
+futures = "0.3"
 tokio.workspace = true
 serde.workspace = true
 serde_json.workspace = true

@@ -1,21 +1,55 @@
+use futures::StreamExt;
 use libp2p::{
-    kad::{Kademlia, KademliaConfig, KademliaEvent, RecordKey, Record, store::MemoryStore},
-    identity::Keypair,
-    swarm::{Swarm, SwarmEvent, NetworkBehaviour},
+    kad::{
+        Behaviour as Kademlia, 
+        Event as KademliaEvent, 
+        RecordKey, 
+        store::MemoryStore,
+        QueryResult,
+        GetProvidersOk,
+    },
+    swarm::{Swarm, SwarmEvent},
     PeerId, Multiaddr,
     noise, tcp, yamux, dns, 
-    identify::{Identify, IdentifyConfig, IdentifyEvent},
-    ping::{Ping, PingEvent},
+    identify,
+    ping,
+    Transport,
 };
+use libp2p_swarm_derive::NetworkBehaviour;
 use std::collections::HashSet;
-use tokio::sync::mpsc;
-use crate::error::{Error, Result};
+use crate::error::{Error, AgoraResult};
 
 #[derive(NetworkBehaviour)]
+#[behaviour(to_swarm = "AgoraBehaviourEvent")]
 pub struct AgoraBehaviour {
     kademlia: Kademlia<MemoryStore>,
-    identify: Identify,
-    ping: Ping,
+    identify: identify::Behaviour,
+    ping: ping::Behaviour,
+}
+
+#[derive(Debug)]
+pub enum AgoraBehaviourEvent {
+    Kademlia(KademliaEvent),
+    Identify(identify::Event),
+    Ping(ping::Event),
+}
+
+impl From<KademliaEvent> for AgoraBehaviourEvent {
+    fn from(event: KademliaEvent) -> Self {
+        AgoraBehaviourEvent::Kademlia(event)
+    }
+}
+
+impl From<identify::Event> for AgoraBehaviourEvent {
+    fn from(event: identify::Event) -> Self {
+        AgoraBehaviourEvent::Identify(event)
+    }
+}
+
+impl From<ping::Event> for AgoraBehaviourEvent {
+    fn from(event: ping::Event) -> Self {
+        AgoraBehaviourEvent::Ping(event)
+    }
 }
 
 pub struct NetworkNode {
@@ -25,8 +59,8 @@ pub struct NetworkNode {
 }
 
 impl NetworkNode {
-    pub async fn new(listen_addr: Option<&str>) -> Result<Self> {
-        let local_keypair = Keypair::generate_ed25519();
+    pub async fn new(listen_addr: Option<&str>) -> AgoraResult<Self> {
+        let local_keypair = libp2p::identity::Keypair::generate_ed25519();
         let local_peer_id = PeerId::from(local_keypair.public());
         
         let transport = dns::tokio::Transport::system(
@@ -45,15 +79,14 @@ impl NetworkNode {
         let store = MemoryStore::new(local_peer_id);
         let kademlia = Kademlia::new(local_peer_id, store);
         
-        let identify = Identify::new(IdentifyConfig::new(
-            "agora/0.1.0".to_string(),
-            local_keypair.public(),
-        ));
+        let identify = identify::Behaviour::new(
+            identify::Config::new("agora/0.1.0".to_string(), local_keypair.public())
+        );
         
         let behaviour = AgoraBehaviour {
             kademlia,
             identify,
-            ping: Ping::default(),
+            ping: ping::Behaviour::default(),
         };
         
         let swarm_config = libp2p::swarm::Config::with_tokio_executor();
@@ -87,7 +120,7 @@ impl NetworkNode {
         &self.known_peers
     }
     
-    pub async fn dial(&mut self, addr: Multiaddr) -> Result<()> {
+    pub async fn dial(&mut self, addr: Multiaddr) -> AgoraResult<()> {
         self.swarm
             .dial(addr)
             .map_err(|e| Error::Network(format!("Dial error: {}", e)))?;
@@ -98,8 +131,8 @@ impl NetworkNode {
         self.swarm.behaviour_mut().kademlia.add_address(&peer_id, addr);
     }
     
-    pub async fn start_providing(&mut self, room_id: &str) -> Result<()> {
-        let key = RecordKey::new(room_id);
+    pub async fn start_providing(&mut self, room_id: &str) -> AgoraResult<()> {
+        let key = RecordKey::new(&room_id);
         self.swarm
             .behaviour_mut()
             .kademlia
@@ -109,7 +142,7 @@ impl NetworkNode {
     }
     
     pub fn get_providers(&mut self, room_id: &str) {
-        let key = RecordKey::new(room_id);
+        let key = RecordKey::new(&room_id);
         self.swarm.behaviour_mut().kademlia.get_providers(key);
     }
     
@@ -128,28 +161,31 @@ impl NetworkNode {
                 }
                 SwarmEvent::ConnectionClosed { peer_id, cause, .. } => {
                     self.known_peers.remove(&peer_id);
-                    return Some(NetworkEvent::PeerDisconnected { peer_id, cause });
+                    return Some(NetworkEvent::PeerDisconnected { 
+                        peer_id, 
+                        cause: cause.map(|e| std::io::Error::new(std::io::ErrorKind::ConnectionReset, e.to_string())),
+                    });
                 }
                 SwarmEvent::Behaviour(event) => {
                     match event {
                         AgoraBehaviourEvent::Kademlia(KademliaEvent::OutboundQueryProgressed { result, .. }) => {
                             match result {
-                                libp2p::kad::QueryResult::GetProviders(Ok(providers)) => {
+                                QueryResult::GetProviders(Ok(GetProvidersOk::FoundProviders { key, providers, .. })) => {
                                     return Some(NetworkEvent::ProvidersFound {
-                                        room_id: String::from_utf8_lossy(providers.key.as_ref()).to_string(),
-                                        providers: providers.providers.into_iter().collect(),
+                                        room_id: String::from_utf8_lossy(key.as_ref()).to_string(),
+                                        providers: providers.into_iter().collect(),
                                     });
                                 }
                                 _ => {}
                             }
                         }
-                        AgoraBehaviourEvent::Identify(IdentifyEvent::Received { info, .. }) => {
+                        AgoraBehaviourEvent::Identify(identify::Event::Received { peer_id, info }) => {
                             return Some(NetworkEvent::PeerIdentified {
-                                peer_id: info.peer_id,
+                                peer_id,
                                 listen_addrs: info.listen_addrs,
                             });
                         }
-                        AgoraBehaviourEvent::Ping(PingEvent { peer, result, .. }) => {
+                        AgoraBehaviourEvent::Ping(ping::Event { peer, .. }) => {
                             return Some(NetworkEvent::PingResult { peer_id: peer, result: Ok(()) });
                         }
                         _ => {}
@@ -182,16 +218,16 @@ pub enum NetworkEvent {
     },
     PingResult {
         peer_id: PeerId,
-        result: Result<()>,
+        result: AgoraResult<()>,
     },
 }
 
-pub fn parse_peer_id(s: &str) -> Result<PeerId> {
+pub fn parse_peer_id(s: &str) -> AgoraResult<PeerId> {
     s.parse()
         .map_err(|e| Error::Network(format!("Invalid peer ID '{}': {}", s, e)))
 }
 
-pub fn parse_multiaddr(s: &str) -> Result<Multiaddr> {
+pub fn parse_multiaddr(s: &str) -> AgoraResult<Multiaddr> {
     s.parse()
         .map_err(|e| Error::Network(format!("Invalid multiaddr '{}': {}", s, e)))
 }

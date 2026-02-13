@@ -1,7 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use agora_core::{Identity, NetworkNode, Room, RoomConfig};
-use tauri::Manager;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -21,7 +20,6 @@ fn main() {
     };
     
     tauri::Builder::default()
-        .plugin(tauri_plugin_shell::init())
         .manage(state)
         .invoke_handler(tauri::generate_handler![
             init_identity,
