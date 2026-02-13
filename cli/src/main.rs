@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use agora_core::{Identity, NetworkNode, Room, RoomConfig};
+use agora_core::{Identity, NetworkNode, Room, RoomConfig, SessionKey, EncryptedChannel};
 
 #[derive(Parser)]
 #[command(name = "agora")]
@@ -35,18 +35,30 @@ enum Commands {
         /// Bootstrap peers (multiaddr format)
         #[arg(short, long)]
         bootstrap: Option<String>,
+        /// Enable verbose logging
+        #[arg(short, long)]
+        verbose: bool,
     },
     /// Parse a room link
     ParseLink {
         /// Room link to parse
         link: String,
     },
+    /// Test encryption
+    TestEncrypt {
+        /// Message to encrypt
+        #[arg(short, long, default_value = "Hello, Agora!")]
+        message: String,
+    },
+    /// Detect NAT type
+    DetectNat,
 }
 
 #[tokio::main]
 async fn main() {
+    let filter = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
     tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .with_env_filter(tracing_subscriber::EnvFilter::new(filter))
         .init();
 
     let cli = Cli::parse();
@@ -58,11 +70,17 @@ async fn main() {
         Commands::CreateRoom { name, password } => {
             handle_create_room(name, password).await;
         }
-        Commands::StartNode { port, bootstrap } => {
-            handle_start_node(port, bootstrap).await;
+        Commands::StartNode { port, bootstrap, verbose } => {
+            handle_start_node(port, bootstrap, verbose).await;
         }
         Commands::ParseLink { link } => {
             handle_parse_link(&link);
+        }
+        Commands::TestEncrypt { message } => {
+            handle_test_encrypt(&message);
+        }
+        Commands::DetectNat => {
+            handle_detect_nat().await;
         }
     }
 }
@@ -116,7 +134,7 @@ async fn handle_create_room(name: Option<String>, password: Option<String>) {
     }
 }
 
-async fn handle_start_node(port: u16, bootstrap: Option<String>) {
+async fn handle_start_node(port: u16, bootstrap: Option<String>, verbose: bool) {
     println!("Starting network node on port {}...\n", port);
     
     let listen_addr_str = format!("/ip4/0.0.0.0/tcp/{}", port);
@@ -141,6 +159,7 @@ async fn handle_start_node(port: u16, bootstrap: Option<String>) {
     }
     
     println!("\nListening for connections... (Ctrl+C to stop)");
+    println!("Features enabled: AutoNAT, DCUtR (hole punch), Kademlia DHT\n");
     
     loop {
         if let Some(event) = node.next_event().await {
@@ -156,8 +175,10 @@ async fn handle_start_node(port: u16, bootstrap: Option<String>) {
                 }
                 agora_core::network::NetworkEvent::PeerIdentified { peer_id, listen_addrs } => {
                     println!("[IDENTIFIED] {} with {} addresses", peer_id, listen_addrs.len());
-                    for addr in listen_addrs {
-                        println!("  - {}", addr);
+                    if verbose {
+                        for addr in listen_addrs {
+                            println!("  - {}", addr);
+                        }
                     }
                 }
                 agora_core::network::NetworkEvent::ProvidersFound { room_id, providers } => {
@@ -165,9 +186,23 @@ async fn handle_start_node(port: u16, bootstrap: Option<String>) {
                 }
                 agora_core::network::NetworkEvent::PingResult { peer_id, result } => {
                     match result {
-                        Ok(()) => println!("[PING] {} OK", peer_id),
+                        Ok(()) => {
+                            if verbose {
+                                println!("[PING] {} OK", peer_id);
+                            }
+                        }
                         Err(e) => println!("[PING] {} FAILED: {}", peer_id, e),
                     }
+                }
+                agora_core::network::NetworkEvent::NatStatusChanged { is_public } => {
+                    if is_public {
+                        println!("[NAT] Public IP detected - direct connections possible");
+                    } else {
+                        println!("[NAT] Behind NAT - hole punching enabled");
+                    }
+                }
+                agora_core::network::NetworkEvent::BootstrapComplete => {
+                    println!("[BOOTSTRAP] Kademlia bootstrap complete");
                 }
             }
         }
@@ -189,6 +224,87 @@ fn handle_parse_link(link: &str) {
         None => {
             println!("Invalid room link format");
             println!("Expected: agora://room/<id> or agora://room/<id>?p=<password>");
+        }
+    }
+}
+
+fn handle_test_encrypt(message: &str) {
+    use agora_core::crypto::{generate_ephemeral_key, compute_fingerprint};
+    
+    println!("Testing E2E encryption...\n");
+    
+    // Generate ephemeral key
+    let key_bytes = generate_ephemeral_key();
+    let session_key = SessionKey::new(key_bytes);
+    
+    println!("Session Key: {}", hex::encode(key_bytes));
+    println!("Fingerprint: {}", compute_fingerprint(&key_bytes));
+    
+    // Create encrypted channel
+    let mut channel = EncryptedChannel::new(session_key);
+    
+    println!("\nEncrypting: \"{}\"", message);
+    
+    // Encrypt
+    let encrypted = channel.encrypt(message.as_bytes())
+        .expect("Encryption failed");
+    
+    println!("\nEncrypted Message:");
+    println!("  Nonce:      {}", encrypted.nonce);
+    println!("  Ciphertext: {}", hex::encode(&encrypted.ciphertext));
+    println!("  Tag:        {}", hex::encode(encrypted.tag));
+    
+    // Decrypt
+    let decrypted = channel.decrypt(&encrypted)
+        .expect("Decryption failed");
+    
+    let decrypted_str = String::from_utf8(decrypted).expect("Invalid UTF-8");
+    
+    println!("\nDecrypted: \"{}\"", decrypted_str);
+    
+    // Test replay attack
+    println!("\nTesting replay attack prevention...");
+    match channel.decrypt(&encrypted) {
+        Ok(_) => println!("  ERROR: Replay attack not detected!"),
+        Err(e) => println!("  OK: Replay attack detected: {}", e),
+    }
+    
+    // Test key expiry
+    use std::time::Duration;
+    let short_key = SessionKey::with_expiry([42u8; 32], Duration::from_millis(10));
+    assert!(!short_key.is_expired());
+    std::thread::sleep(Duration::from_millis(20));
+    assert!(short_key.is_expired());
+    println!("\nKey expiry test: PASSED");
+}
+
+async fn handle_detect_nat() {
+    println!("Detecting NAT configuration...\n");
+    
+    use agora_core::NatTraversal;
+    
+    let mut nat = NatTraversal::new(None);
+    
+    println!("STUN servers configured:");
+    for server in nat.get_stun_servers() {
+        println!("  - {}", server);
+    }
+    
+    match nat.detect_nat_type().await {
+        Ok(nat_type) => {
+            println!("\nNAT Type: {:?}", nat_type);
+            println!("Description: {}", nat_type.description());
+            println!("Can hole punch: {}", nat_type.can_hole_punch());
+            
+            if !nat_type.can_hole_punch() {
+                println!("\n⚠ Your NAT type may require TURN relay for some connections.");
+            } else {
+                println!("\n✓ Direct P2P connections should work well.");
+            }
+        }
+        Err(e) => {
+            println!("\nNAT detection failed: {}", e);
+            println!("This is expected without actual STUN connectivity.");
         }
     }
 }

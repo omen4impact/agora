@@ -13,11 +13,15 @@ use libp2p::{
     noise, tcp, yamux, dns, 
     identify,
     ping,
+    dcutr,
+    autonat,
     Transport,
 };
 use libp2p_swarm_derive::NetworkBehaviour;
 use std::collections::HashSet;
+use std::time::Duration;
 use crate::error::{Error, AgoraResult};
+use crate::nat::{NatTraversal, NatType, StunConfig};
 
 #[derive(NetworkBehaviour)]
 #[behaviour(to_swarm = "AgoraBehaviourEvent")]
@@ -25,6 +29,8 @@ pub struct AgoraBehaviour {
     kademlia: Kademlia<MemoryStore>,
     identify: identify::Behaviour,
     ping: ping::Behaviour,
+    autonat: autonat::Behaviour,
+    dcutr: dcutr::Behaviour,
 }
 
 #[derive(Debug)]
@@ -32,6 +38,8 @@ pub enum AgoraBehaviourEvent {
     Kademlia(KademliaEvent),
     Identify(identify::Event),
     Ping(ping::Event),
+    Autonat(autonat::Event),
+    Dcutr(dcutr::Event),
 }
 
 impl From<KademliaEvent> for AgoraBehaviourEvent {
@@ -52,14 +60,57 @@ impl From<ping::Event> for AgoraBehaviourEvent {
     }
 }
 
+impl From<autonat::Event> for AgoraBehaviourEvent {
+    fn from(event: autonat::Event) -> Self {
+        AgoraBehaviourEvent::Autonat(event)
+    }
+}
+
+impl From<dcutr::Event> for AgoraBehaviourEvent {
+    fn from(event: dcutr::Event) -> Self {
+        AgoraBehaviourEvent::Dcutr(event)
+    }
+}
+
+pub struct NetworkNodeConfig {
+    pub listen_addr: Option<String>,
+    pub stun_servers: Vec<String>,
+    pub enable_relay: bool,
+    pub bootstrap_peers: Vec<String>,
+}
+
+impl Default for NetworkNodeConfig {
+    fn default() -> Self {
+        Self {
+            listen_addr: None,
+            stun_servers: vec![
+                "stun:stun.l.google.com:19302".to_string(),
+            ],
+            enable_relay: true,
+            bootstrap_peers: vec![],
+        }
+    }
+}
+
 pub struct NetworkNode {
     swarm: Swarm<AgoraBehaviour>,
     local_peer_id: PeerId,
     known_peers: HashSet<PeerId>,
+    nat_traversal: NatTraversal,
+    config: NetworkNodeConfig,
+    listen_addrs: Vec<Multiaddr>,
 }
 
 impl NetworkNode {
     pub async fn new(listen_addr: Option<&str>) -> AgoraResult<Self> {
+        let config = NetworkNodeConfig {
+            listen_addr: listen_addr.map(|s| s.to_string()),
+            ..Default::default()
+        };
+        Self::with_config(config).await
+    }
+    
+    pub async fn with_config(config: NetworkNodeConfig) -> AgoraResult<Self> {
         let local_keypair = libp2p::identity::Keypair::generate_ed25519();
         let local_peer_id = PeerId::from(local_keypair.public());
         
@@ -73,7 +124,7 @@ impl NetworkNode {
                 .map_err(|e| Error::Network(format!("Noise config error: {}", e)))?
         )
         .multiplex(yamux::Config::default())
-        .timeout(std::time::Duration::from_secs(20))
+        .timeout(Duration::from_secs(20))
         .boxed();
         
         let store = MemoryStore::new(local_peer_id);
@@ -81,26 +132,47 @@ impl NetworkNode {
         
         let identify = identify::Behaviour::new(
             identify::Config::new("agora/0.1.0".to_string(), local_keypair.public())
+                .with_agent_version(format!("agora/0.1.0 rust/{}", env!("CARGO_PKG_VERSION")))
         );
+        
+        let autonat = autonat::Behaviour::new(
+            local_peer_id,
+            autonat::Config {
+                only_global_ips: false,
+                ..Default::default()
+            },
+        );
+        
+        let dcutr = dcutr::Behaviour::new(local_peer_id);
         
         let behaviour = AgoraBehaviour {
             kademlia,
             identify,
             ping: ping::Behaviour::default(),
+            autonat,
+            dcutr,
         };
         
         let swarm_config = libp2p::swarm::Config::with_tokio_executor();
         let mut swarm = Swarm::new(transport, behaviour, local_peer_id, swarm_config);
         
-        let addr = listen_addr.unwrap_or("/ip4/0.0.0.0/tcp/0");
+        let addr = config.listen_addr.as_deref().unwrap_or("/ip4/0.0.0.0/tcp/0");
         swarm
             .listen_on(addr.parse().map_err(|e| Error::Network(format!("Invalid address: {}", e)))?)
             .map_err(|e| Error::Network(format!("Listen error: {}", e)))?;
+        
+        let stun_config = StunConfig {
+            servers: config.stun_servers.clone(),
+            ..Default::default()
+        };
         
         Ok(Self {
             swarm,
             local_peer_id,
             known_peers: HashSet::new(),
+            nat_traversal: NatTraversal::new(Some(stun_config)),
+            config,
+            listen_addrs: vec![],
         })
     }
     
@@ -112,12 +184,20 @@ impl NetworkNode {
         self.local_peer_id.to_string()
     }
     
+    pub fn listen_addrs(&self) -> &[Multiaddr] {
+        &self.listen_addrs
+    }
+    
     pub fn add_peer(&mut self, peer_id: PeerId) {
         self.known_peers.insert(peer_id);
     }
     
     pub fn known_peers(&self) -> &HashSet<PeerId> {
         &self.known_peers
+    }
+    
+    pub async fn detect_nat(&mut self) -> AgoraResult<NatType> {
+        self.nat_traversal.detect_nat_type().await
     }
     
     pub async fn dial(&mut self, addr: Multiaddr) -> AgoraResult<()> {
@@ -146,14 +226,26 @@ impl NetworkNode {
         self.swarm.behaviour_mut().kademlia.get_providers(key);
     }
     
+    pub fn bootstrap(&mut self) -> AgoraResult<()> {
+        self.swarm
+            .behaviour_mut()
+            .kademlia
+            .bootstrap()
+            .map_err(|e| Error::Network(format!("Bootstrap error: {:?}", e)))?;
+        Ok(())
+    }
+    
     pub async fn next_event(&mut self) -> Option<NetworkEvent> {
         loop {
             match self.swarm.select_next_some().await {
                 SwarmEvent::NewListenAddr { address, .. } => {
+                    self.listen_addrs.push(address.clone());
+                    tracing::info!("Listening on {}", address);
                     return Some(NetworkEvent::Listening(address));
                 }
                 SwarmEvent::ConnectionEstablished { peer_id, endpoint, .. } => {
                     self.known_peers.insert(peer_id);
+                    tracing::info!("Connected to {} at {}", peer_id, endpoint.get_remote_address());
                     return Some(NetworkEvent::PeerConnected {
                         peer_id,
                         addr: endpoint.get_remote_address().clone(),
@@ -161,10 +253,14 @@ impl NetworkNode {
                 }
                 SwarmEvent::ConnectionClosed { peer_id, cause, .. } => {
                     self.known_peers.remove(&peer_id);
+                    tracing::info!("Disconnected from {} ({:?})", peer_id, cause);
                     return Some(NetworkEvent::PeerDisconnected { 
                         peer_id, 
                         cause: cause.map(|e| std::io::Error::new(std::io::ErrorKind::ConnectionReset, e.to_string())),
                     });
+                }
+                SwarmEvent::OutgoingConnectionError { peer_id, error, .. } => {
+                    tracing::warn!("Failed to connect to {:?}: {}", peer_id, error);
                 }
                 SwarmEvent::Behaviour(event) => {
                     match event {
@@ -176,10 +272,18 @@ impl NetworkNode {
                                         providers: providers.into_iter().collect(),
                                     });
                                 }
+                                QueryResult::Bootstrap(Ok(_)) => {
+                                    tracing::info!("Bootstrap complete");
+                                    return Some(NetworkEvent::BootstrapComplete);
+                                }
                                 _ => {}
                             }
                         }
                         AgoraBehaviourEvent::Identify(identify::Event::Received { peer_id, info }) => {
+                            tracing::debug!("Identified {} with {} addresses", peer_id, info.listen_addrs.len());
+                            for addr in &info.listen_addrs {
+                                self.swarm.behaviour_mut().kademlia.add_address(&peer_id, addr.clone());
+                            }
                             return Some(NetworkEvent::PeerIdentified {
                                 peer_id,
                                 listen_addrs: info.listen_addrs,
@@ -187,6 +291,16 @@ impl NetworkNode {
                         }
                         AgoraBehaviourEvent::Ping(ping::Event { peer, .. }) => {
                             return Some(NetworkEvent::PingResult { peer_id: peer, result: Ok(()) });
+                        }
+                        AgoraBehaviourEvent::Autonat(autonat::Event::StatusChanged { old, new }) => {
+                            tracing::info!("NAT status changed: {:?} -> {:?}", old, new);
+                            let is_public = matches!(new, autonat::NatStatus::Public(_));
+                            return Some(NetworkEvent::NatStatusChanged { 
+                                is_public,
+                            });
+                        }
+                        AgoraBehaviourEvent::Dcutr(event) => {
+                            tracing::debug!("DCUtR event: {:?}", event);
                         }
                         _ => {}
                     }
@@ -220,6 +334,10 @@ pub enum NetworkEvent {
         peer_id: PeerId,
         result: AgoraResult<()>,
     },
+    NatStatusChanged {
+        is_public: bool,
+    },
+    BootstrapComplete,
 }
 
 pub fn parse_peer_id(s: &str) -> AgoraResult<PeerId> {

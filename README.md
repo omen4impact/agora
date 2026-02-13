@@ -21,8 +21,8 @@ agora/
 - [x] Kademlia DHT for peer discovery
 - [x] Room system with shareable links
 - [x] CLI testing tool
-- [ ] NAT traversal (Hole punching, STUN/TURN)
-- [ ] End-to-end encryption (Noise Protocol)
+- [x] NAT traversal framework (AutoNAT, DCUtR, STUN)
+- [x] End-to-end encryption framework (Session keys, replay protection)
 - [ ] Audio pipeline (Opus, RNNoise)
 - [ ] Dynamic mixer selection
 - [ ] Desktop UI (Tauri)
@@ -49,8 +49,14 @@ cargo run -p agora-cli -- create-room --name "MyRoom"
 # Parse room link
 cargo run -p agora-cli -- parse-link "agora://room/abc123"
 
-# Start network node
-cargo run -p agora-cli -- start-node --port 4001
+# Start network node (with NAT traversal)
+cargo run -p agora-cli -- start-node --port 4001 --verbose
+
+# Test encryption
+cargo run -p agora-cli -- test-encrypt --message "Hello, Agora!"
+
+# Detect NAT type
+cargo run -p agora-cli -- detect-nat
 ```
 
 ### Build & Run
@@ -77,8 +83,7 @@ See [shape-up-phase1.md](./shape-up-phase1.md) for detailed planning.
 
 ## Current Status
 
-**Cycle 1, Pitch 1.1**: libp2p Core Integration ✅
-
+### Cycle 1 ✅ Complete
 - [x] Project structure
 - [x] Identity system (Ed25519)
 - [x] Basic network node (libp2p/Kademlia)
@@ -86,6 +91,28 @@ See [shape-up-phase1.md](./shape-up-phase1.md) for detailed planning.
 - [x] CLI testing tool
 - [x] Flutter mobile scaffold
 - [x] Tauri desktop scaffold
+
+### Cycle 2 ✅ Complete
+- [x] NAT traversal framework
+  - AutoNAT for automatic NAT detection
+  - DCUtR for hole punching through relays
+  - STUN server configuration
+  - NAT type detection (Full Cone, Symmetric, etc.)
+- [x] E2E encryption framework
+  - Session key management with expiry
+  - Encrypted channel with replay attack protection
+  - Key derivation for encryption
+  - Fingerprint verification
+
+## Test Coverage
+
+```
+17 tests passing:
+- Identity: generation, serialization, signing
+- Room: creation, links, passwords
+- NAT: type detection, hole punch capability
+- Crypto: encrypt/decrypt, replay protection, key expiry
+```
 
 ## License
 

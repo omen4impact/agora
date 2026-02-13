@@ -22,6 +22,12 @@ pub enum Error {
     
     #[error("Configuration error: {0}")]
     Config(String),
+    
+    #[error("Crypto error: {0}")]
+    Crypto(String),
+    
+    #[error("NAT traversal error: {0}")]
+    Nat(String),
 }
 
 pub type AgoraResult<T> = std::result::Result<T, Error>;
