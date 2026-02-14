@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 authors.workspace = true
 
+[features]
+default = []
+ffi = []
+
 [dependencies]
 libp2p.workspace = true
 libp2p-swarm-derive.workspace = true

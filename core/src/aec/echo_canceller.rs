@@ -46,6 +46,7 @@ pub struct EchoCanceller {
     power_near: f32,
     power_error: f32,
     stats: EchoStats,
+    #[allow(dead_code)]
     sample_rate: u32,
 }
 
@@ -503,7 +504,7 @@ mod tests {
         aec.process_frame(&far, &near);
 
         let stats = aec.stats();
-        assert!(stats.frames_processed > 0 || stats.frames_processed == 0);
+        assert!(stats.frames_processed >= 1);
     }
 
     #[test]

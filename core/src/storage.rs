@@ -28,7 +28,7 @@ impl IdentityStorage {
             .ok_or_else(|| Error::Storage("Cannot determine config directory".to_string()))?
             .join("agora");
 
-        Ok(Self::with_path(config_dir)?)
+        Self::with_path(config_dir)
     }
 
     pub fn with_path(config_dir: PathBuf) -> AgoraResult<Self> {
@@ -114,7 +114,7 @@ impl IdentityStorage {
             peer_id: identity.peer_id(),
             key_bytes: base64::Engine::encode(
                 &base64::engine::general_purpose::STANDARD,
-                &identity.to_bytes(),
+                identity.to_bytes(),
             ),
             display_name: identity.display_name().map(|s| s.to_string()),
         };

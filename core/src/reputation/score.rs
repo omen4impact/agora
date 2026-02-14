@@ -142,8 +142,7 @@ impl ReputationScore {
             return 0.5;
         }
 
-        let success_rate = self.successful_sessions as f32 / self.total_sessions as f32;
-        success_rate
+        self.successful_sessions as f32 / self.total_sessions as f32
     }
 
     fn calculate_challenge_score(&self) -> f32 {

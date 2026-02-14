@@ -104,6 +104,7 @@ impl Room {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct ConnectedPeer {
     peer_id: String,
     room_id: Option<String>,

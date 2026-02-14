@@ -8,17 +8,12 @@ pub const OPUS_MIN_BITRATE: i32 = 6000;
 pub const OPUS_MAX_BITRATE: i32 = 510000;
 pub const OPUS_DEFAULT_BITRATE: i32 = 32000;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum OpusMode {
+    #[default]
     Voip,
     Audio,
     LowDelay,
-}
-
-impl Default for OpusMode {
-    fn default() -> Self {
-        Self::Voip
-    }
 }
 
 impl From<OpusMode> for Application {

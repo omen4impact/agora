@@ -6,12 +6,18 @@ use tokio::runtime::Runtime;
 
 static RUNTIME: OnceLock<Runtime> = OnceLock::new();
 
+#[allow(dead_code)]
 fn runtime() -> Option<&'static Runtime> {
-    RUNTIME.get_or_init(|| Runtime::new().ok()?).into()
+    RUNTIME.get()
 }
 
-fn to_c_string(s: String) -> *mut c_char {
-    match CString::new(s) {
+fn init_runtime() -> Option<&'static Runtime> {
+    RUNTIME.get_or_init(|| Runtime::new().expect("Failed to create tokio runtime"));
+    RUNTIME.get()
+}
+
+fn to_c_string(s: impl Into<String>) -> *mut c_char {
+    match CString::new(s.into()) {
         Ok(cstr) => cstr.into_raw(),
         Err(_) => {
             let fallback = CString::new("ERROR:Internal error - invalid string")
@@ -31,7 +37,7 @@ fn error_c_string(msg: &str) -> *mut c_char {
 /// Caller must free the returned string with `agora_free_string`.
 #[no_mangle]
 pub extern "C" fn agora_init() -> *mut c_char {
-    let Some(rt) = runtime() else {
+    let Some(rt) = init_runtime() else {
         return error_c_string("Failed to create runtime");
     };
 
@@ -235,7 +241,7 @@ pub struct AgoraNATInfo {
 /// Returns NAT info that must be freed with `agora_free_nat_info`.
 #[no_mangle]
 pub extern "C" fn agora_detect_nat() -> AgoraNATInfo {
-    let Some(rt) = runtime() else {
+    let Some(rt) = init_runtime() else {
         return AgoraNATInfo {
             nat_type: error_c_string("No runtime"),
             can_hole_punch: false,
@@ -258,7 +264,7 @@ pub extern "C" fn agora_detect_nat() -> AgoraNATInfo {
             }
         }
         Err(e) => AgoraNATInfo {
-            nat_type: to_c_string("Unknown".to_string()),
+            nat_type: to_c_string("Unknown"),
             can_hole_punch: false,
             description: to_c_string(e),
         },

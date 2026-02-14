@@ -587,8 +587,10 @@ mod tests {
 
     #[test]
     fn test_mixer_rotation_check() {
-        let mut config = MixerConfig::default();
-        config.rotation_interval = Duration::from_millis(10);
+        let config = MixerConfig {
+            rotation_interval: Duration::from_millis(10),
+            ..Default::default()
+        };
 
         let mut manager = MixerManager::new("local".to_string(), Some(config));
 

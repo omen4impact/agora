@@ -463,8 +463,10 @@ mod tests {
 
     #[test]
     fn test_vouch_manager_max_vouches() {
-        let mut limits = VouchLimits::default();
-        limits.max_vouches_per_voucher = 2;
+        let limits = VouchLimits {
+            max_vouches_per_voucher: 2,
+            ..Default::default()
+        };
 
         let mut manager = VouchManager::new(limits);
 

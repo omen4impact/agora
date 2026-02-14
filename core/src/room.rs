@@ -104,8 +104,8 @@ fn hash_password(password: &str) -> String {
 
     format!(
         "{}:{}",
-        base64::engine::general_purpose::STANDARD.encode(&salt),
-        base64::engine::general_purpose::STANDARD.encode(&hash)
+        base64::engine::general_purpose::STANDARD.encode(salt),
+        base64::engine::general_purpose::STANDARD.encode(hash)
     )
 }
 

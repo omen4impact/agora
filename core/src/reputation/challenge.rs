@@ -72,11 +72,7 @@ impl Challenge {
 
     pub fn time_remaining_secs(&self) -> u64 {
         let now = current_timestamp();
-        if now >= self.expires_at {
-            0
-        } else {
-            self.expires_at - now
-        }
+        self.expires_at.saturating_sub(now)
     }
 
     pub fn generate_response_data(&self) -> Vec<u8> {

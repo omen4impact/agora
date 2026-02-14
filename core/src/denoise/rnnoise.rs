@@ -1,6 +1,7 @@
 use crate::error::AgoraResult;
 
 pub const RNNOISE_FRAME_SIZE: usize = 480;
+#[allow(dead_code)]
 pub const RNNOISE_SAMPLE_RATE: u32 = 48000;
 
 pub struct RnnoiseDenoiser {
@@ -40,7 +41,7 @@ impl RnnoiseDenoiser {
         }
 
         let mut output = [0.0f32; RNNOISE_FRAME_SIZE];
-        self.state.process_frame(frame, &mut output);
+        self.state.process_frame(&mut output, frame);
         frame.copy_from_slice(&output);
         self.frame_count += 1;
     }
@@ -53,7 +54,7 @@ impl RnnoiseDenoiser {
         for chunk in samples.chunks_mut(RNNOISE_FRAME_SIZE) {
             if chunk.len() == RNNOISE_FRAME_SIZE {
                 let mut output = [0.0f32; RNNOISE_FRAME_SIZE];
-                self.state.process_frame(chunk, &mut output);
+                self.state.process_frame(&mut output, chunk);
                 chunk.copy_from_slice(&output);
                 self.frame_count += 1;
             }
@@ -86,6 +87,7 @@ impl Default for RnnoiseDenoiser {
     }
 }
 
+#[allow(dead_code)]
 pub struct DenoiserConfig {
     pub enabled: bool,
     pub threshold: f32,
