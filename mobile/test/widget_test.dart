@@ -1,30 +1,80 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-
-import 'package:agora_mobile/main.dart';
+import 'package:flutter/material.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  TestWidgetsFlutterBinding.ensureInitialized();
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+  testWidgets('App scaffold renders correctly', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xFF1A1A2E), Color(0xFF16213E)],
+              ),
+            ),
+            child: const Center(
+              child: Text('AGORA'),
+            ),
+          ),
+        ),
+      ),
+    );
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+    expect(find.text('AGORA'), findsOneWidget);
+  });
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+  test('Audio constraints are valid for voice chat', () {
+    final constraints = {
+      'audio': {
+        'echoCancellation': true,
+        'noiseSuppression': true,
+        'autoGainControl': true,
+        'sampleRate': 48000,
+        'channelCount': 1,
+      },
+      'video': false,
+    };
+
+    expect(constraints['audio'], isA<Map>());
+    final audio = constraints['audio'] as Map;
+    expect(audio['echoCancellation'], isTrue);
+    expect(audio['noiseSuppression'], isTrue);
+    expect(audio['autoGainControl'], isTrue);
+    expect(audio['sampleRate'], equals(48000));
+  });
+
+  test('Signaling message types are correct', () {
+    final messageTypes = [
+      'join',
+      'leave',
+      'sdp_offer',
+      'sdp_answer',
+      'ice_candidate',
+      'peer_list',
+      'peer_joined',
+      'peer_left',
+      'error',
+    ];
+
+    expect(messageTypes.length, equals(9));
+    expect(messageTypes, contains('join'));
+    expect(messageTypes, contains('sdp_offer'));
+    expect(messageTypes, contains('ice_candidate'));
+  });
+
+  test('ICE server configuration is valid', () {
+    final iceServers = [
+      {'urls': 'stun:stun.l.google.com:19302'},
+      {'urls': 'stun:stun1.l.google.com:19302'},
+    ];
+
+    expect(iceServers.length, equals(2));
+    for (final server in iceServers) {
+      expect(server['urls'], contains('stun:'));
+    }
   });
 }

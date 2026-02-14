@@ -31,6 +31,9 @@ pub enum Error {
     
     #[error("Audio error: {0}")]
     Audio(String),
+    
+    #[error("Storage error: {0}")]
+    Storage(String),
 }
 
 pub type AgoraResult<T> = std::result::Result<T, Error>;

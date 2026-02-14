@@ -1,0 +1,13 @@
+target/
+.git/
+.gitignore
+*.md
+!README.md
+.vscode/
+.idea/
+*.log
+*.pid
+.env
+.env.*
+desktop/ui/node_modules/
+core/benches/

@@ -5,11 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Agora - P2P Voice Chat</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
@@ -22,7 +18,7 @@
         }
         
         .container {
-            max-width: 600px;
+            max-width: 700px;
             width: 100%;
             padding: 2rem;
         }
@@ -40,16 +36,13 @@
             background-clip: text;
         }
         
-        .logo p {
-            color: #888;
-            margin-top: 0.5rem;
-        }
+        .logo p { color: #888; margin-top: 0.5rem; }
         
         .card {
             background: rgba(255, 255, 255, 0.05);
             border: 1px solid rgba(255, 255, 255, 0.1);
             border-radius: 16px;
-            padding: 2rem;
+            padding: 1.5rem;
             margin-bottom: 1rem;
             backdrop-filter: blur(10px);
         }
@@ -58,25 +51,29 @@
             display: flex;
             align-items: center;
             gap: 0.5rem;
-            margin-bottom: 1.5rem;
             padding: 0.75rem;
             background: rgba(0, 255, 136, 0.1);
             border-radius: 8px;
         }
         
-        .status.disconnected {
-            background: rgba(255, 136, 0, 0.1);
-        }
+        .status.disconnected { background: rgba(255, 136, 0, 0.1); }
         
         .status-dot {
             width: 10px;
             height: 10px;
             border-radius: 50%;
             background: #00ff88;
+            animation: pulse 2s infinite;
         }
         
         .status.disconnected .status-dot {
             background: #ff8800;
+            animation: none;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
         }
         
         .peer-id {
@@ -87,11 +84,7 @@
             margin-top: 0.5rem;
         }
         
-        .actions {
-            display: flex;
-            flex-direction: column;
-            gap: 1rem;
-        }
+        .actions { display: flex; flex-direction: column; gap: 1rem; }
         
         .btn {
             padding: 1rem 2rem;
@@ -113,19 +106,34 @@
             box-shadow: 0 4px 20px rgba(0, 217, 255, 0.3);
         }
         
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
         .btn-secondary {
             background: rgba(255, 255, 255, 0.1);
             color: #eee;
             border: 1px solid rgba(255, 255, 255, 0.2);
         }
         
-        .btn-secondary:hover {
-            background: rgba(255, 255, 255, 0.15);
+        .btn-secondary:hover { background: rgba(255, 255, 255, 0.15); }
+        
+        .btn-danger {
+            background: rgba(255, 68, 68, 0.2);
+            color: #ff4444;
+            border: 1px solid rgba(255, 68, 68, 0.3);
         }
         
-        .input-group {
-            margin-bottom: 1rem;
+        .btn-danger:hover { background: rgba(255, 68, 68, 0.3); }
+        
+        .btn-small {
+            padding: 0.5rem 1rem;
+            font-size: 0.875rem;
         }
+        
+        .input-group { margin-bottom: 1rem; }
         
         .input-group label {
             display: block;
@@ -149,18 +157,35 @@
             border-color: #00d9ff;
         }
         
-        .hidden {
-            display: none;
-        }
+        .hidden { display: none !important; }
         
-        .room-link {
+        .room-link-container {
             background: rgba(0, 217, 255, 0.1);
             border: 1px dashed #00d9ff;
             border-radius: 8px;
             padding: 1rem;
             margin-top: 1rem;
-            word-break: break-all;
+        }
+        
+        .room-link-label {
+            font-size: 0.75rem;
+            color: #00d9ff;
+            text-transform: uppercase;
+            margin-bottom: 0.5rem;
+        }
+        
+        .room-link-text {
             font-family: monospace;
+            font-size: 0.875rem;
+            word-break: break-all;
+            color: #fff;
+            margin-bottom: 0.75rem;
+        }
+        
+        .room-link-actions {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
         }
         
         .copy-btn {
@@ -170,29 +195,615 @@
             padding: 0.5rem 1rem;
             border-radius: 6px;
             cursor: pointer;
-            margin-top: 0.5rem;
+            font-size: 0.875rem;
+            transition: all 0.2s;
         }
         
-        .copy-btn:hover {
-            background: rgba(0, 217, 255, 0.1);
+        .copy-btn:hover { background: rgba(0, 217, 255, 0.1); }
+        .copy-btn.copied { background: rgba(0, 255, 136, 0.2); border-color: #00ff88; color: #00ff88; }
+        
+        .session-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
         }
         
-        .settings-toggle {
+        .session-header h2 {
+            font-size: 1.25rem;
+            color: #fff;
+        }
+        
+        .session-info {
+            display: flex;
+            gap: 1rem;
+            font-size: 0.875rem;
+            color: #888;
+        }
+        
+        .participants-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+        
+        .participant {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 1rem;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 12px;
+            transition: background 0.2s;
+        }
+        
+        .participant:hover { background: rgba(255, 255, 255, 0.05); }
+        
+        .participant-avatar {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #00d9ff, #00ff88);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: #1a1a2e;
+            position: relative;
+            flex-shrink: 0;
+        }
+        
+        .participant-avatar.speaking::before {
+            content: '';
             position: absolute;
-            top: 1rem;
-            right: 1rem;
+            inset: -4px;
+            border-radius: 50%;
+            border: 3px solid #00ff88;
+            animation: speaking-pulse 1s ease-in-out infinite;
+        }
+        
+        @keyframes speaking-pulse {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.1); opacity: 0.7; }
+        }
+        
+        .participant-info { flex: 1; min-width: 0; }
+        
+        .participant-name {
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .participant-role {
+            font-size: 0.75rem;
+            color: #00d9ff;
+            text-transform: uppercase;
+        }
+        
+        .participant-stats {
+            display: flex;
+            gap: 1rem;
+            font-size: 0.75rem;
+            color: #666;
+        }
+        
+        .latency-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+        
+        .latency-indicator.good { color: #00ff88; }
+        .latency-indicator.medium { color: #ffaa00; }
+        .latency-indicator.bad { color: #ff4444; }
+        
+        .volume-control {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .volume-slider {
+            width: 80px;
+            height: 4px;
+            -webkit-appearance: none;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 2px;
+            outline: none;
+        }
+        
+        .volume-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #00d9ff;
+            cursor: pointer;
+        }
+        
+        .volume-icon {
+            font-size: 0.875rem;
+            opacity: 0.7;
+        }
+        
+        .audio-controls {
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+            padding: 1.5rem;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 16px;
+            margin-top: 1rem;
+        }
+        
+        .audio-btn {
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .audio-btn.mute {
+            background: rgba(255, 255, 255, 0.1);
+            color: #eee;
+        }
+        
+        .audio-btn.mute.active {
+            background: rgba(255, 68, 68, 0.2);
+            color: #ff4444;
+        }
+        
+        .audio-btn.deafen {
+            background: rgba(255, 255, 255, 0.1);
+            color: #eee;
+        }
+        
+        .audio-btn.deafen.active {
+            background: rgba(255, 68, 68, 0.2);
+            color: #ff4444;
+        }
+        
+        .audio-btn.leave {
+            background: rgba(255, 68, 68, 0.2);
+            color: #ff4444;
+        }
+        
+        .audio-btn.leave:hover {
+            background: rgba(255, 68, 68, 0.3);
+        }
+        
+        .audio-btn-label {
+            font-size: 0.6rem;
+            position: absolute;
+            bottom: -16px;
+            white-space: nowrap;
+        }
+        
+        .audio-btn-container {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        .ptt-indicator {
+            background: rgba(255, 136, 0, 0.2);
+            border: 1px solid rgba(255, 136, 0, 0.5);
+            color: #ff8800;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-size: 0.875rem;
+            margin-top: 1rem;
+            text-align: center;
+        }
+        
+        .ptt-indicator.active {
+            background: rgba(0, 255, 136, 0.2);
+            border-color: rgba(0, 255, 136, 0.5);
+            color: #00ff88;
+        }
+        
+        .mixer-status {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            background: rgba(0, 217, 255, 0.1);
+            border-radius: 8px;
+            font-size: 0.875rem;
+        }
+        
+        .topology-badge {
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        
+        .topology-badge.fullmesh {
+            background: rgba(0, 255, 136, 0.2);
+            color: #00ff88;
+        }
+        
+        .topology-badge.sfu {
+            background: rgba(0, 217, 255, 0.2);
+            color: #00d9ff;
+        }
+        
+        .audio-visualizer {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 2px;
+            height: 24px;
+        }
+        
+        .audio-bar {
+            width: 3px;
+            background: #00d9ff;
+            border-radius: 2px;
+            transition: height 0.1s;
+        }
+        
+        .toast {
+            position: fixed;
+            bottom: 2rem;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.9);
+            color: #fff;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            font-size: 0.875rem;
+            z-index: 1000;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        
+        .toast.show {
+            opacity: 1;
+        }
+        
+        .settings-btn {
             background: transparent;
             border: none;
-            color: #666;
+            color: #888;
+            font-size: 1.25rem;
             cursor: pointer;
+            padding: 0.5rem;
+            border-radius: 8px;
+            transition: all 0.2s;
+        }
+        
+        .settings-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+        }
+        
+        .quality-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 0.25rem;
+        }
+        
+        .quality-indicator.good { background: #00ff88; }
+        .quality-indicator.medium { background: #ffaa00; }
+        .quality-indicator.bad { background: #ff4444; }
+        
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s;
+        }
+        
+        .modal-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+        
+        .modal {
+            background: #1a1a2e;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            width: 90%;
+            max-width: 500px;
+            max-height: 80vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .modal-header h3 {
+            font-size: 1.25rem;
+            color: #fff;
+        }
+        
+        .modal-close {
+            background: transparent;
+            border: none;
+            color: #888;
             font-size: 1.5rem;
+            cursor: pointer;
+            padding: 0.25rem;
+            line-height: 1;
+        }
+        
+        .modal-close:hover { color: #fff; }
+        
+        .modal-tabs {
+            display: flex;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .modal-tab {
+            flex: 1;
+            padding: 0.75rem;
+            background: transparent;
+            border: none;
+            color: #888;
+            font-size: 0.875rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            border-bottom: 2px solid transparent;
+        }
+        
+        .modal-tab:hover { color: #fff; }
+        
+        .modal-tab.active {
+            color: #00d9ff;
+            border-bottom-color: #00d9ff;
+        }
+        
+        .modal-body {
+            padding: 1.5rem;
+            overflow-y: auto;
+            flex: 1;
+        }
+        
+        .settings-section {
+            display: none;
+        }
+        
+        .settings-section.active {
+            display: block;
+        }
+        
+        .setting-item {
+            margin-bottom: 1.25rem;
+        }
+        
+        .setting-item label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: #aaa;
+            font-size: 0.875rem;
+        }
+        
+        .setting-item select,
+        .setting-item input[type="text"],
+        .setting-item input[type="number"] {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.05);
+            color: #eee;
+            font-size: 1rem;
+        }
+        
+        .setting-item select:focus,
+        .setting-item input:focus {
+            outline: none;
+            border-color: #00d9ff;
+        }
+        
+        .setting-toggle {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        .toggle-switch {
+            position: relative;
+            width: 48px;
+            height: 24px;
+        }
+        
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            inset: 0;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 24px;
+            transition: 0.3s;
+        }
+        
+        .toggle-slider::before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background: #fff;
+            border-radius: 50%;
+            transition: 0.3s;
+        }
+        
+        .toggle-switch input:checked + .toggle-slider {
+            background: #00d9ff;
+        }
+        
+        .toggle-switch input:checked + .toggle-slider::before {
+            transform: translateX(24px);
+        }
+        
+        .identity-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+        
+        .identity-info {
+            padding: 1rem;
+            background: rgba(0, 217, 255, 0.1);
+            border-radius: 8px;
+            margin-bottom: 1rem;
+        }
+        
+        .identity-info .peer-id {
+            font-family: monospace;
+            font-size: 0.75rem;
+            color: #00d9ff;
+            word-break: break-all;
+        }
+        
+        .volume-range {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+        
+        .volume-range input[type="range"] {
+            flex: 1;
+            height: 4px;
+            -webkit-appearance: none;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 2px;
+            outline: none;
+        }
+        
+        .volume-range input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: #00d9ff;
+            cursor: pointer;
+        }
+        
+        .volume-value {
+            min-width: 40px;
+            text-align: right;
+            color: #888;
+            font-size: 0.875rem;
         }
     </style>
 </head>
 <body>
-    <button class="settings-toggle" id="settingsBtn">⚙️</button>
+    <div class="toast" id="toast"></div>
     
-    <div class="container" id="initScreen">
+    <div class="modal-overlay" id="settingsModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>Settings</h3>
+                <button class="modal-close" id="closeSettings">&times;</button>
+            </div>
+            <div class="modal-tabs">
+                <button class="modal-tab active" data-tab="audio">Audio</button>
+                <button class="modal-tab" data-tab="network">Network</button>
+                <button class="modal-tab" data-tab="identity">Identity</button>
+            </div>
+            <div class="modal-body">
+                <div class="settings-section active" id="audioSettings">
+                    <div class="setting-item">
+                        <label>Input Device</label>
+                        <select id="inputDeviceSelect">
+                            <option value="">Default</option>
+                        </select>
+                    </div>
+                    <div class="setting-item">
+                        <label>Output Device</label>
+                        <select id="outputDeviceSelect">
+                            <option value="">Default</option>
+                        </select>
+                    </div>
+                    <div class="setting-item setting-toggle">
+                        <label>Noise Suppression</label>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="noiseSuppressionToggle" checked>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div class="setting-item">
+                        <label>Input Volume</label>
+                        <div class="volume-range">
+                            <input type="range" id="inputVolumeSlider" min="0" max="100" value="100">
+                            <span class="volume-value" id="inputVolumeValue">100%</span>
+                        </div>
+                    </div>
+                    <div class="setting-item">
+                        <label>Output Volume</label>
+                        <div class="volume-range">
+                            <input type="range" id="outputVolumeSlider" min="0" max="100" value="100">
+                            <span class="volume-value" id="outputVolumeValue">100%</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="settings-section" id="networkSettings">
+                    <div class="setting-item">
+                        <label>Listen Port (0 = auto)</label>
+                        <input type="number" id="listenPortInput" placeholder="0" min="0" max="65535">
+                    </div>
+                    <div class="setting-item">
+                        <label>Bootstrap Nodes (one per line)</label>
+                        <textarea id="bootstrapNodesInput" style="width: 100%; height: 80px; padding: 0.75rem; border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; background: rgba(255,255,255,0.05); color: #eee; resize: vertical;" placeholder="/ip4/.../tcp/..."></textarea>
+                    </div>
+                </div>
+                
+                <div class="settings-section" id="identitySettings">
+                    <div class="identity-info">
+                        <div style="color: #888; font-size: 0.75rem; margin-bottom: 0.25rem;">Your Peer ID</div>
+                        <div class="peer-id" id="settingsPeerId">Loading...</div>
+                    </div>
+                    <div class="identity-actions">
+                        <button class="btn btn-secondary" id="exportIdentityBtn">Export Identity</button>
+                        <button class="btn btn-secondary" id="importIdentityBtn">Import Identity</button>
+                        <input type="file" id="importIdentityFile" accept=".json" style="display: none;">
+                    </div>
+                    <p style="color: #666; font-size: 0.75rem; margin-top: 1rem;">
+                        Warning: Importing a new identity will replace your current one. 
+                        Keep your exported identity file safe and private.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="container" id="homeScreen">
         <div class="logo">
             <h1>🔊 AGORA</h1>
             <p>Decentralized P2P Voice Chat</p>
@@ -234,40 +845,193 @@
         <div class="card hidden" id="joinRoomPanel">
             <div class="input-group">
                 <label for="roomLink">Room Link or ID</label>
-                <input type="text" id="roomLink" placeholder="agora://room/... or room ID">
+                <input type="text" id="roomLinkInput" placeholder="agora://room/... or room ID">
             </div>
             <button class="btn btn-primary" id="joinRoomConfirm">Join Room</button>
             <button class="btn btn-secondary" id="joinRoomCancel">Cancel</button>
         </div>
+    </div>
+    
+    <div class="container hidden" id="sessionScreen">
+        <div class="card">
+            <div class="session-header">
+                <div>
+                    <h2 id="sessionTitle">Voice Room</h2>
+                    <div class="session-info">
+                        <span id="sessionId"></span>
+                    </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <div class="mixer-status">
+                        <span class="topology-badge fullmesh" id="topologyBadge">Full-Mesh</span>
+                        <span id="participantCount">1 participant</span>
+                    </div>
+                    <button class="settings-btn" id="settingsBtn">⚙️</button>
+                </div>
+            </div>
+        </div>
         
-        <div class="card hidden" id="roomCreatedPanel">
-            <h3>Room Created!</h3>
-            <p>Share this link with others:</p>
-            <div class="room-link" id="generatedLink"></div>
-            <button class="copy-btn" id="copyLinkBtn">📋 Copy Link</button>
-            <button class="btn btn-primary" id="startRoomBtn" style="margin-top: 1rem; width: 100%;">Start Voice Chat</button>
+        <div class="card participants-list" id="participantsList">
+        </div>
+        
+        <div class="audio-controls">
+            <div class="audio-btn-container">
+                <button class="audio-btn mute" id="muteBtn" title="Mute (M)">🎤</button>
+                <span class="audio-btn-label" id="muteLabel">Mute</span>
+            </div>
+            <div class="audio-btn-container">
+                <button class="audio-btn deafen" id="deafenBtn" title="Deafen (D)">🎧</button>
+                <span class="audio-btn-label" id="deafenLabel">Deafen</span>
+            </div>
+            <div class="audio-btn-container">
+                <button class="audio-btn leave" id="leaveBtn" title="Leave">📞</button>
+                <span class="audio-btn-label">Leave</span>
+            </div>
+        </div>
+        
+        <div class="ptt-indicator" id="pttIndicator">
+            Press and hold <strong>Space</strong> for Push-to-Talk
+        </div>
+        
+        <div class="card" style="margin-top: 1rem;">
+            <div class="session-info">
+                <span id="networkStatus">🌐 Connected</span>
+                <span id="audioStatus">🔊 Audio Active</span>
+            </div>
+        </div>
+        
+        <div class="room-link-container hidden" id="roomLinkContainer">
+            <div class="room-link-label">Share this link to invite others</div>
+            <div class="room-link-text" id="roomLinkText"></div>
+            <div class="room-link-actions">
+                <button class="copy-btn" id="copyLinkBtn">📋 Copy Link</button>
+                <button class="copy-btn" id="copyRoomIdBtn">Copy Room ID</button>
+            </div>
         </div>
     </div>
 
     <script type="module">
         const { invoke } = window.__TAURI__.core;
+        const { listen } = window.__TAURI__.event;
         
+        let state = {
+            peerId: null,
+            displayName: null,
+            currentRoom: null,
+            isMuted: false,
+            isDeafened: false,
+            isPttActive: false,
+            pttEnabled: true,
+            participants: [],
+            audioLevels: {},
+            connectedPeers: new Set(),
+            settings: null
+        };
+        
+        const homeScreen = document.getElementById('homeScreen');
+        const sessionScreen = document.getElementById('sessionScreen');
         const statusEl = document.getElementById('status');
         const statusTextEl = document.getElementById('statusText');
         const peerIdDisplayEl = document.getElementById('peerIdDisplay');
         const displayNameInput = document.getElementById('displayName');
-        
         const mainActionsEl = document.getElementById('mainActions');
         const createRoomPanelEl = document.getElementById('createRoomPanel');
         const joinRoomPanelEl = document.getElementById('joinRoomPanel');
-        const roomCreatedPanelEl = document.getElementById('roomCreatedPanel');
+        const participantsListEl = document.getElementById('participantsList');
+        const roomLinkContainer = document.getElementById('roomLinkContainer');
+        const roomLinkText = document.getElementById('roomLinkText');
+        const toastEl = document.getElementById('toast');
+        const settingsModal = document.getElementById('settingsModal');
+        
+        function showToast(message, duration = 2000) {
+            toastEl.textContent = message;
+            toastEl.classList.add('show');
+            setTimeout(() => toastEl.classList.remove('show'), duration);
+        }
+        
+        async function setupEventListeners() {
+            await listen('peer-connected', (event) => {
+                const { peer_id, addr } = event.payload;
+                console.log('Peer connected:', peer_id);
+                state.connectedPeers.add(peer_id);
+                showToast(`Peer connected: ${peer_id.substring(0, 8)}...`);
+            });
+            
+            await listen('peer-disconnected', (event) => {
+                const { peer_id } = event.payload;
+                console.log('Peer disconnected:', peer_id);
+                state.connectedPeers.delete(peer_id);
+                removeParticipant(peer_id);
+                showToast(`Peer disconnected`);
+            });
+            
+            await listen('providers-found', (event) => {
+                const { room_id, providers } = event.payload;
+                console.log('Providers found for room:', room_id, providers);
+                providers.forEach(peerId => {
+                    if (peerId !== state.peerId) {
+                        addParticipant({
+                            peerId: peerId,
+                            name: peerId.substring(0, 8),
+                            isSelf: false,
+                            isMixer: false,
+                            latency: Math.floor(Math.random() * 100) + 20,
+                            quality: 'good'
+                        });
+                    }
+                });
+            });
+            
+            await listen('room-joined', (event) => {
+                const { room_id, peer_id } = event.payload;
+                console.log('Peer joined room:', peer_id);
+                if (peer_id !== state.peerId) {
+                    addParticipant({
+                        peerId: peer_id,
+                        name: peer_id.substring(0, 8),
+                        isSelf: false,
+                        isMixer: false,
+                        latency: Math.floor(Math.random() * 100) + 20,
+                        quality: 'good'
+                    });
+                }
+            });
+            
+            await listen('room-left', (event) => {
+                const { room_id, peer_id } = event.payload;
+                console.log('Peer left room:', peer_id);
+                removeParticipant(peer_id);
+            });
+            
+            await listen('audio-received', (event) => {
+                const { peer_id, sequence } = event.payload;
+                const avatar = document.getElementById(`avatar-${peer_id}`);
+                if (avatar) {
+                    avatar.classList.add('speaking');
+                    setTimeout(() => avatar.classList.remove('speaking'), 200);
+                }
+            });
+            
+            await listen('nat-status', (event) => {
+                const { is_public } = event.payload;
+                console.log('NAT status:', is_public ? 'Public' : 'Behind NAT');
+                document.getElementById('networkStatus').textContent = 
+                    is_public ? '🌐 Public IP' : '🌐 Behind NAT (Hole-punching)';
+            });
+            
+            await listen('listening', (event) => {
+                const { addr } = event.payload;
+                console.log('Listening on:', addr);
+            });
+        }
         
         async function init() {
             try {
-                const peerId = await invoke('init_identity');
+                await setupEventListeners();
+                state.peerId = await invoke('init_identity');
                 statusEl.classList.remove('disconnected');
                 statusTextEl.textContent = 'Ready';
-                peerIdDisplayEl.textContent = `Peer ID: ${peerId}`;
+                peerIdDisplayEl.textContent = `Peer ID: ${state.peerId.substring(0, 20)}...`;
             } catch (e) {
                 statusTextEl.textContent = `Error: ${e}`;
                 console.error(e);
@@ -299,46 +1063,33 @@
             const password = document.getElementById('roomPassword').value || null;
             
             try {
-                const link = await invoke('create_room', { name, password });
-                document.getElementById('generatedLink').textContent = link;
-                createRoomPanelEl.classList.add('hidden');
-                roomCreatedPanelEl.classList.remove('hidden');
+                statusTextEl.textContent = 'Creating room...';
+                const roomInfo = await invoke('create_room', { name, password });
+                state.currentRoom = roomInfo;
+                
+                await startSession(roomInfo);
             } catch (e) {
-                alert(`Failed to create room: ${e}`);
+                showToast(`Failed to create room: ${e}`);
+                statusTextEl.textContent = 'Ready';
             }
         });
         
-        document.getElementById('copyLinkBtn').addEventListener('click', () => {
-            const link = document.getElementById('generatedLink').textContent;
-            navigator.clipboard.writeText(link);
-            document.getElementById('copyLinkBtn').textContent = '✓ Copied!';
-            setTimeout(() => {
-                document.getElementById('copyLinkBtn').textContent = '📋 Copy Link';
-            }, 2000);
-        });
-        
         document.getElementById('joinRoomConfirm').addEventListener('click', async () => {
-            const link = document.getElementById('roomLink').value;
+            const link = document.getElementById('roomLinkInput').value;
             if (!link) {
-                alert('Please enter a room link or ID');
+                showToast('Please enter a room link or ID');
                 return;
             }
             
             try {
+                statusTextEl.textContent = 'Joining room...';
                 const roomId = await invoke('join_room', { roomLink: link });
-                alert(`Joining room: ${roomId}`);
+                state.currentRoom = { id: roomId, link };
+                
+                await startSession(state.currentRoom);
             } catch (e) {
-                alert(`Failed to join room: ${e}`);
-            }
-        });
-        
-        document.getElementById('startRoomBtn').addEventListener('click', async () => {
-            try {
-                const peerId = await invoke('start_network', { listenPort: null });
-                statusTextEl.textContent = 'Listening...';
-                alert(`Network started. Peer ID: ${peerId}`);
-            } catch (e) {
-                alert(`Failed to start network: ${e}`);
+                showToast(`Failed to join room: ${e}`);
+                statusTextEl.textContent = 'Ready';
             }
         });
         
@@ -347,9 +1098,389 @@
             if (name) {
                 try {
                     await invoke('set_display_name', { name });
+                    state.displayName = name;
                 } catch (e) {
                     console.error('Failed to set display name:', e);
                 }
+            }
+        });
+        
+        document.getElementById('muteBtn').addEventListener('click', toggleMute);
+        document.getElementById('deafenBtn').addEventListener('click', toggleDeafen);
+        document.getElementById('leaveBtn').addEventListener('click', async () => {
+            if (confirm('Leave the room?')) {
+                await leaveSession();
+            }
+        });
+        
+        function toggleMute() {
+            state.isMuted = !state.isMuted;
+            const btn = document.getElementById('muteBtn');
+            const label = document.getElementById('muteLabel');
+            btn.classList.toggle('active', state.isMuted);
+            btn.textContent = state.isMuted ? '🔇' : '🎤';
+            label.textContent = state.isMuted ? 'Unmute' : 'Mute';
+            invoke('set_muted', { isMuted: state.isMuted }).catch(console.error);
+        }
+        
+        function toggleDeafen() {
+            state.isDeafened = !state.isDeafened;
+            const btn = document.getElementById('deafenBtn');
+            const label = document.getElementById('deafenLabel');
+            btn.classList.toggle('active', state.isDeafened);
+            btn.textContent = state.isDeafened ? '🔕' : '🎧';
+            label.textContent = state.isDeafened ? 'Undeafen' : 'Deafen';
+        }
+        
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' && state.pttEnabled && !state.isMuted) {
+                if (!state.isPttActive) {
+                    state.isPttActive = true;
+                    document.getElementById('pttIndicator').classList.add('active');
+                }
+            }
+            if (e.code === 'KeyM' && document.activeElement.tagName !== 'INPUT') {
+                toggleMute();
+            }
+            if (e.code === 'KeyD' && document.activeElement.tagName !== 'INPUT') {
+                toggleDeafen();
+            }
+        });
+        
+        document.addEventListener('keyup', (e) => {
+            if (e.code === 'Space') {
+                state.isPttActive = false;
+                document.getElementById('pttIndicator').classList.remove('active');
+            }
+        });
+        
+        document.getElementById('copyLinkBtn').addEventListener('click', async () => {
+            if (state.currentRoom?.link) {
+                await navigator.clipboard.writeText(state.currentRoom.link);
+                const btn = document.getElementById('copyLinkBtn');
+                btn.textContent = '✓ Copied!';
+                btn.classList.add('copied');
+                showToast('Link copied to clipboard!');
+                setTimeout(() => {
+                    btn.textContent = '📋 Copy Link';
+                    btn.classList.remove('copied');
+                }, 2000);
+            }
+        });
+        
+        document.getElementById('copyRoomIdBtn').addEventListener('click', async () => {
+            if (state.currentRoom?.id) {
+                await navigator.clipboard.writeText(state.currentRoom.id);
+                const btn = document.getElementById('copyRoomIdBtn');
+                btn.textContent = '✓ Copied!';
+                btn.classList.add('copied');
+                showToast('Room ID copied to clipboard!');
+                setTimeout(() => {
+                    btn.textContent = 'Copy Room ID';
+                    btn.classList.remove('copied');
+                }, 2000);
+            }
+        });
+        
+        async function startSession(roomInfo) {
+            try {
+                const networkPeerId = await invoke('start_network', { listenPort: null });
+                console.log('Network started:', networkPeerId);
+                
+                await invoke('start_audio', { noiseSuppression: true });
+                console.log('Audio started');
+                
+                await invoke('init_mixer');
+                console.log('Mixer initialized');
+                
+                addParticipant({
+                    peerId: state.peerId,
+                    name: state.displayName || 'You',
+                    isSelf: true,
+                    isMixer: true,
+                    latency: 0,
+                    quality: 'good'
+                });
+                
+                document.getElementById('sessionTitle').textContent = roomInfo.name || 'Voice Room';
+                document.getElementById('sessionId').textContent = `Room: ${roomInfo.id}`;
+                
+                if (roomInfo.link) {
+                    roomLinkText.textContent = roomInfo.link;
+                    roomLinkContainer.classList.remove('hidden');
+                }
+                
+                homeScreen.classList.add('hidden');
+                sessionScreen.classList.remove('hidden');
+                
+                updateMixerStatus();
+                setInterval(updateMixerStatus, 2000);
+                
+                simulateAudioLevels();
+                
+            } catch (e) {
+                showToast(`Failed to start session: ${e}`);
+                statusTextEl.textContent = 'Ready';
+            }
+        }
+        
+        async function leaveSession() {
+            try {
+                await invoke('stop_audio');
+                await invoke('stop_network');
+                
+                state.currentRoom = null;
+                state.participants = [];
+                participantsListEl.innerHTML = '';
+                
+                sessionScreen.classList.add('hidden');
+                homeScreen.classList.remove('hidden');
+                roomLinkContainer.classList.add('hidden');
+                statusTextEl.textContent = 'Ready';
+                
+            } catch (e) {
+                console.error('Error leaving session:', e);
+            }
+        }
+        
+        function addParticipant(participant) {
+            state.participants.push(participant);
+            
+            const el = document.createElement('div');
+            el.className = 'participant';
+            el.id = `participant-${participant.peerId}`;
+            el.innerHTML = `
+                <div class="participant-avatar" id="avatar-${participant.peerId}">${participant.name.charAt(0).toUpperCase()}</div>
+                <div class="participant-info">
+                    <div class="participant-name">
+                        ${participant.name}
+                        ${participant.isSelf ? '<span style="color: #888; font-weight: normal;">(You)</span>' : ''}
+                    </div>
+                    <div class="participant-role">${participant.isMixer ? 'Mixer' : 'Participant'}</div>
+                    <div class="participant-stats">
+                        <span class="latency-indicator ${participant.quality}" id="latency-${participant.peerId}">
+                            <span class="quality-indicator ${participant.quality}"></span>
+                            ${participant.latency}ms
+                        </span>
+                    </div>
+                </div>
+                ${!participant.isSelf ? `
+                <div class="volume-control">
+                    <span class="volume-icon">🔊</span>
+                    <input type="range" class="volume-slider" min="0" max="100" value="100" 
+                           data-peer-id="${participant.peerId}" title="Volume">
+                </div>
+                ` : ''}
+            `;
+            
+            participantsListEl.appendChild(el);
+            updateParticipantCount();
+            
+            if (!participant.isSelf) {
+                const slider = el.querySelector('.volume-slider');
+                slider.addEventListener('input', (e) => {
+                    console.log(`Volume for ${participant.peerId}: ${e.target.value}%`);
+                });
+            }
+        }
+        
+        function updateParticipantCount() {
+            const count = state.participants.length;
+            document.getElementById('participantCount').textContent = 
+                `${count} participant${count !== 1 ? 's' : ''}`;
+        }
+        
+        async function updateMixerStatus() {
+            try {
+                const status = await invoke('get_mixer_status');
+                
+                const badge = document.getElementById('topologyBadge');
+                badge.textContent = status.topology === 'FullMesh' ? 'Full-Mesh' : 'SFU';
+                badge.className = `topology-badge ${status.topology === 'FullMesh' ? 'fullmesh' : 'sfu'}`;
+                
+            } catch (e) {
+                console.error('Failed to get mixer status:', e);
+            }
+        }
+        
+        function removeParticipant(peerId) {
+            state.participants = state.participants.filter(p => p.peerId !== peerId);
+            const el = document.getElementById(`participant-${peerId}`);
+            if (el) {
+                el.remove();
+            }
+            updateParticipantCount();
+        }
+        
+        function simulateAudioLevels() {
+            setInterval(() => {
+                state.participants.forEach(p => {
+                    if (p.isSelf && !state.isMuted) {
+                        const level = Math.random();
+                        const avatar = document.getElementById(`avatar-${p.peerId}`);
+                        if (avatar) {
+                            avatar.classList.toggle('speaking', level > 0.3);
+                        }
+                    }
+                });
+            }, 100);
+        }
+        
+        function openSettingsModal() {
+            settingsModal.classList.add('active');
+            loadSettingsToModal();
+            populateAudioDevices();
+            document.getElementById('settingsPeerId').textContent = state.peerId || 'Not initialized';
+        }
+        
+        function closeSettingsModal() {
+            settingsModal.classList.remove('active');
+        }
+        
+        async function loadSettingsToModal() {
+            try {
+                const settings = await invoke('get_settings');
+                state.settings = settings;
+                
+                document.getElementById('noiseSuppressionToggle').checked = settings.audio?.noise_suppression ?? true;
+                document.getElementById('inputVolumeSlider').value = (settings.audio?.input_volume ?? 1.0) * 100;
+                document.getElementById('inputVolumeValue').textContent = Math.round((settings.audio?.input_volume ?? 1.0) * 100) + '%';
+                document.getElementById('outputVolumeSlider').value = (settings.audio?.output_volume ?? 1.0) * 100;
+                document.getElementById('outputVolumeValue').textContent = Math.round((settings.audio?.output_volume ?? 1.0) * 100) + '%';
+                document.getElementById('listenPortInput').value = settings.network?.listen_port ?? '';
+                document.getElementById('bootstrapNodesInput').value = (settings.network?.bootstrap_nodes ?? []).join('\n');
+            } catch (e) {
+                console.error('Failed to load settings:', e);
+            }
+        }
+        
+        async function saveSettingsFromModal() {
+            try {
+                const settings = {
+                    audio: {
+                        input_device: document.getElementById('inputDeviceSelect').value || null,
+                        output_device: document.getElementById('outputDeviceSelect').value || null,
+                        noise_suppression: document.getElementById('noiseSuppressionToggle').checked,
+                        input_volume: document.getElementById('inputVolumeSlider').value / 100,
+                        output_volume: document.getElementById('outputVolumeSlider').value / 100,
+                    },
+                    network: {
+                        listen_port: document.getElementById('listenPortInput').value ? parseInt(document.getElementById('listenPortInput').value) : null,
+                        bootstrap_nodes: document.getElementById('bootstrapNodesInput').value.split('\n').filter(s => s.trim()),
+                    }
+                };
+                
+                await invoke('save_settings', { settings });
+                state.settings = settings;
+                showToast('Settings saved');
+            } catch (e) {
+                showToast(`Failed to save settings: ${e}`);
+            }
+        }
+        
+        async function populateAudioDevices() {
+            try {
+                const devices = await invoke('get_audio_devices');
+                
+                const inputSelect = document.getElementById('inputDeviceSelect');
+                const outputSelect = document.getElementById('outputDeviceSelect');
+                
+                inputSelect.innerHTML = '<option value="">Default</option>';
+                outputSelect.innerHTML = '<option value="">Default</option>';
+                
+                devices.input.forEach(d => {
+                    const opt = document.createElement('option');
+                    opt.value = d.name;
+                    opt.textContent = d.name + (d.is_default ? ' (Default)' : '');
+                    inputSelect.appendChild(opt);
+                });
+                
+                devices.output.forEach(d => {
+                    const opt = document.createElement('option');
+                    opt.value = d.name;
+                    opt.textContent = d.name + (d.is_default ? ' (Default)' : '');
+                    outputSelect.appendChild(opt);
+                });
+                
+                if (state.settings?.audio?.input_device) {
+                    inputSelect.value = state.settings.audio.input_device;
+                }
+                if (state.settings?.audio?.output_device) {
+                    outputSelect.value = state.settings.audio.output_device;
+                }
+            } catch (e) {
+                console.error('Failed to get audio devices:', e);
+            }
+        }
+        
+        async function exportIdentityToFile() {
+            try {
+                const json = await invoke('export_identity');
+                const blob = new Blob([json], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'agora-identity.json';
+                a.click();
+                URL.revokeObjectURL(url);
+                showToast('Identity exported');
+            } catch (e) {
+                showToast(`Failed to export identity: ${e}`);
+            }
+        }
+        
+        async function importIdentityFromFile(file) {
+            try {
+                const text = await file.text();
+                await invoke('import_identity', { json: text });
+                showToast('Identity imported');
+                state.peerId = await invoke('get_peer_id');
+                document.getElementById('settingsPeerId').textContent = state.peerId;
+                peerIdDisplayEl.textContent = `Peer ID: ${state.peerId.substring(0, 20)}...`;
+            } catch (e) {
+                showToast(`Failed to import identity: ${e}`);
+            }
+        }
+        
+        document.getElementById('settingsBtn').addEventListener('click', openSettingsModal);
+        document.getElementById('closeSettings').addEventListener('click', closeSettingsModal);
+        
+        settingsModal.addEventListener('click', (e) => {
+            if (e.target === settingsModal) closeSettingsModal();
+        });
+        
+        document.querySelectorAll('.modal-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('.modal-tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.settings-section').forEach(s => s.classList.remove('active'));
+                tab.classList.add('active');
+                document.getElementById(tab.dataset.tab + 'Settings').classList.add('active');
+            });
+        });
+        
+        document.getElementById('inputVolumeSlider').addEventListener('input', (e) => {
+            document.getElementById('inputVolumeValue').textContent = e.target.value + '%';
+            saveSettingsFromModal();
+        });
+        
+        document.getElementById('outputVolumeSlider').addEventListener('input', (e) => {
+            document.getElementById('outputVolumeValue').textContent = e.target.value + '%';
+            saveSettingsFromModal();
+        });
+        
+        document.getElementById('noiseSuppressionToggle').addEventListener('change', saveSettingsFromModal);
+        document.getElementById('inputDeviceSelect').addEventListener('change', saveSettingsFromModal);
+        document.getElementById('outputDeviceSelect').addEventListener('change', saveSettingsFromModal);
+        document.getElementById('listenPortInput').addEventListener('change', saveSettingsFromModal);
+        document.getElementById('bootstrapNodesInput').addEventListener('change', saveSettingsFromModal);
+        
+        document.getElementById('exportIdentityBtn').addEventListener('click', exportIdentityToFile);
+        document.getElementById('importIdentityBtn').addEventListener('click', () => {
+            document.getElementById('importIdentityFile').click();
+        });
+        document.getElementById('importIdentityFile').addEventListener('change', (e) => {
+            if (e.target.files[0]) {
+                importIdentityFromFile(e.target.files[0]);
             }
         });
         

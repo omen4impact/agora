@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
+import '../services/identity_service.dart';
+import 'session_screen.dart';
 
 class JoinRoomScreen extends StatefulWidget {
   const JoinRoomScreen({super.key});
@@ -34,24 +37,28 @@ class _JoinRoomScreenState extends State<JoinRoomScreen> {
 
     setState(() => _isJoining = true);
 
-    // Simulate joining
-    Future.delayed(const Duration(seconds: 1), () {
-      if (mounted) {
-        setState(() => _isJoining = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Joining room: $roomId'),
-            backgroundColor: const Color(0xFF00D9FF),
-          ),
-        );
-      }
-    });
+    final identity = context.read<IdentityService>();
+    final parsed = identity.parseRoomLink(link);
+
+    final resolvedRoomId = parsed ?? roomId;
+
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SessionScreen(
+          roomId: resolvedRoomId,
+          roomLink: link.startsWith('agora://')
+              ? link
+              : 'agora://room/$resolvedRoomId',
+        ),
+      ),
+    );
   }
 
   Future<void> _pasteFromClipboard() async {
     final data = await Clipboard.getData(Clipboard.kTextPlain);
-    if (data.text != null) {
-      _linkController.text = data.text!;
+    if (data?.text != null) {
+      _linkController.text = data!.text!;
     }
   }
 
@@ -105,6 +112,7 @@ class _JoinRoomScreenState extends State<JoinRoomScreen> {
                     ),
                   ),
                   style: const TextStyle(color: Colors.white),
+                  onSubmitted: (_) => _joinRoom(),
                 ),
                 const SizedBox(height: 24),
                 const Text(

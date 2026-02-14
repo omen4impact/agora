@@ -4,6 +4,7 @@ members = [
     "core",
     "desktop",
     "cli",
+    "node",
 ]
 
 [workspace.package]
@@ -26,6 +27,7 @@ libp2p = { version = "0.53", features = [
     "relay",
     "dcutr",
     "autonat",
+    "request-response",
 ] }
 libp2p-swarm-derive = "0.34"
 tokio = { version = "1", features = ["full"] }
@@ -41,5 +43,26 @@ sha2 = "0.10"
 clap = { version = "4", features = ["derive"] }
 hex = "0.4"
 cpal = "0.15"
-rubato = "0.15"  # Audio resampling
-hound = "3.5"    # WAV file support for testing
+rubato = "0.15"
+hound = "3.5"
+bincode = "1"
+bytes = "1"
+futures = "0.3"
+async-trait = "0.1"
+stun = "0.5"
+chacha20poly1305 = "0.10"
+hkdf = "0.12"
+x25519-dalek = { version = "2", features = ["static_secrets"] }
+hmac = "0.12"
+base64 = "0.22"
+snow = "0.9"
+opus = "0.3"
+nnnoiseless = "0.5"
+axum = { version = "0.7", features = ["ws"] }
+tower = "0.4"
+tower-http = { version = "0.5", features = ["cors", "fs"] }
+toml = "0.8"
+prometheus = "0.13"
+lazy_static = "1.4"
+signal-hook = "0.3"
+signal-hook-tokio = { version = "0.3", features = ["futures-v0_3"] }

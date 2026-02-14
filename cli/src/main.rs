@@ -2,6 +2,7 @@ use clap::{Parser, Subcommand};
 use agora_core::{
     Identity, NetworkNode, Room, RoomConfig, SessionKey, EncryptedChannel, 
     AudioPipeline, AudioConfig, AudioDevice, MixerManager, MixerConfig,
+    IdentityStorage,
 };
 
 #[derive(Parser)]
@@ -18,6 +19,21 @@ enum Commands {
     Identity {
         #[arg(short, long)]
         name: Option<String>,
+        #[arg(short, long)]
+        load: bool,
+        #[arg(short, long)]
+        show: bool,
+    },
+    SaveIdentity {
+        #[arg(short, long)]
+        name: Option<String>,
+    },
+    DeleteIdentity,
+    ExportIdentity {
+        path: String,
+    },
+    ImportIdentity {
+        path: String,
     },
     CreateRoom {
         #[arg(short, long)]
@@ -32,6 +48,8 @@ enum Commands {
         bootstrap: Option<String>,
         #[arg(short, long)]
         verbose: bool,
+        #[arg(short, long)]
+        room: Option<String>,
     },
     ParseLink {
         link: String,
@@ -49,7 +67,6 @@ enum Commands {
         noise_suppression: bool,
     },
     TestMixer {
-        /// Number of simulated participants
         #[arg(short, long, default_value = "6")]
         participants: usize,
     },
@@ -65,9 +82,13 @@ async fn main() {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Identity { name } => handle_identity(name).await,
+        Commands::Identity { name, load, show } => handle_identity(name, load, show).await,
+        Commands::SaveIdentity { name } => handle_save_identity(name).await,
+        Commands::DeleteIdentity => handle_delete_identity().await,
+        Commands::ExportIdentity { path } => handle_export_identity(&path).await,
+        Commands::ImportIdentity { path } => handle_import_identity(&path).await,
         Commands::CreateRoom { name, password } => handle_create_room(name, password).await,
-        Commands::StartNode { port, bootstrap, verbose } => handle_start_node(port, bootstrap, verbose).await,
+        Commands::StartNode { port, bootstrap, verbose, room } => handle_start_node(port, bootstrap, verbose, room).await,
         Commands::ParseLink { link } => handle_parse_link(&link),
         Commands::TestEncrypt { message } => handle_test_encrypt(&message),
         Commands::DetectNat => handle_detect_nat().await,
@@ -77,7 +98,59 @@ async fn main() {
     }
 }
 
-async fn handle_identity(name: Option<String>) {
+async fn handle_identity(name: Option<String>, load: bool, show: bool) {
+    let storage = match IdentityStorage::new() {
+        Ok(s) => s,
+        Err(e) => {
+            println!("Error initializing storage: {}", e);
+            return;
+        }
+    };
+    
+    if show {
+        if !storage.has_stored_identity() {
+            println!("No stored identity found.");
+            println!("Run 'agora identity' to create a new one.");
+            return;
+        }
+        
+        match storage.load() {
+            Ok(identity) => {
+                println!("Stored Identity:\n");
+                println!("Peer ID:    {}", identity.peer_id());
+                println!("Public Key: {}", identity.public_key_base64());
+                if let Some(display_name) = identity.display_name() {
+                    println!("Name:       {}", display_name);
+                }
+                println!("\nConfig directory: {}", storage.config_dir().display());
+            }
+            Err(e) => println!("Error loading identity: {}", e),
+        }
+        return;
+    }
+    
+    if load {
+        match storage.load_or_create() {
+            Ok(mut identity) => {
+                if let Some(n) = name {
+                    identity.set_display_name(n);
+                    if let Err(e) = storage.save(&identity) {
+                        println!("Warning: Failed to save name: {}", e);
+                    }
+                }
+                
+                println!("Identity loaded:\n");
+                println!("Peer ID:    {}", identity.peer_id());
+                println!("Public Key: {}", identity.public_key_base64());
+                if let Some(display_name) = identity.display_name() {
+                    println!("Name:       {}", display_name);
+                }
+            }
+            Err(e) => println!("Error: {}", e),
+        }
+        return;
+    }
+    
     println!("Generating new identity...\n");
     
     let mut identity = Identity::generate().expect("Failed to generate identity");
@@ -95,6 +168,135 @@ async fn handle_identity(name: Option<String>) {
     
     println!("\nKey bytes (save securely):");
     println!("{}", hex::encode(identity.to_bytes()));
+    
+    match storage.save(&identity) {
+        Ok(_) => println!("\nIdentity saved to: {}/identity.bin", storage.config_dir().display()),
+        Err(e) => println!("\nWarning: Failed to save identity: {}", e),
+    }
+}
+
+async fn handle_save_identity(name: Option<String>) {
+    let storage = match IdentityStorage::new() {
+        Ok(s) => s,
+        Err(e) => {
+            println!("Error initializing storage: {}", e);
+            return;
+        }
+    };
+    
+    let mut identity = match storage.load_or_create() {
+        Ok(id) => id,
+        Err(e) => {
+            println!("Error: {}", e);
+            return;
+        }
+    };
+    
+    if let Some(n) = name {
+        identity.set_display_name(n);
+    }
+    
+    match storage.save(&identity) {
+        Ok(_) => {
+            println!("Identity saved successfully.");
+            println!("Peer ID: {}", identity.peer_id());
+            if let Some(n) = identity.display_name() {
+                println!("Name: {}", n);
+            }
+        }
+        Err(e) => println!("Error saving identity: {}", e),
+    }
+}
+
+async fn handle_delete_identity() {
+    let storage = match IdentityStorage::new() {
+        Ok(s) => s,
+        Err(e) => {
+            println!("Error initializing storage: {}", e);
+            return;
+        }
+    };
+    
+    if !storage.has_stored_identity() {
+        println!("No stored identity found.");
+        return;
+    }
+    
+    match storage.delete() {
+        Ok(_) => println!("Identity deleted successfully."),
+        Err(e) => println!("Error deleting identity: {}", e),
+    }
+}
+
+async fn handle_export_identity(path: &str) {
+    let storage = match IdentityStorage::new() {
+        Ok(s) => s,
+        Err(e) => {
+            println!("Error initializing storage: {}", e);
+            return;
+        }
+    };
+    
+    if !storage.has_stored_identity() {
+        println!("No stored identity found.");
+        println!("Run 'agora identity' first to create one.");
+        return;
+    }
+    
+    let identity = match storage.load() {
+        Ok(id) => id,
+        Err(e) => {
+            println!("Error loading identity: {}", e);
+            return;
+        }
+    };
+    
+    let export_path = std::path::Path::new(path);
+    match storage.export_to_file(&identity, export_path) {
+        Ok(_) => {
+            println!("Identity exported to: {}", path);
+            println!("Peer ID: {}", identity.peer_id());
+            println!("\nWARNING: Keep this file secure!");
+        }
+        Err(e) => println!("Error exporting identity: {}", e),
+    }
+}
+
+async fn handle_import_identity(path: &str) {
+    let storage = match IdentityStorage::new() {
+        Ok(s) => s,
+        Err(e) => {
+            println!("Error initializing storage: {}", e);
+            return;
+        }
+    };
+    
+    if storage.has_stored_identity() {
+        println!("Warning: This will replace your existing identity!");
+        print!("Continue? [y/N] ");
+        use std::io::{self, Write, BufRead};
+        io::stdout().flush().ok();
+        
+        let mut input = String::new();
+        io::stdin().lock().read_line(&mut input).ok();
+        
+        if !input.trim().to_lowercase().starts_with('y') {
+            println!("Import cancelled.");
+            return;
+        }
+    }
+    
+    let import_path = std::path::Path::new(path);
+    match storage.import_from_file(import_path) {
+        Ok(identity) => {
+            println!("Identity imported successfully!");
+            println!("Peer ID: {}", identity.peer_id());
+            if let Some(n) = identity.display_name() {
+                println!("Name: {}", n);
+            }
+        }
+        Err(e) => println!("Error importing identity: {}", e),
+    }
 }
 
 async fn handle_create_room(name: Option<String>, password: Option<String>) {
@@ -112,7 +314,7 @@ async fn handle_create_room(name: Option<String>, password: Option<String>) {
     println!("Protected:  {}", if room.has_password() { "Yes" } else { "No (public room)" });
 }
 
-async fn handle_start_node(port: u16, bootstrap: Option<String>, verbose: bool) {
+async fn handle_start_node(port: u16, bootstrap: Option<String>, verbose: bool, room: Option<String>) {
     println!("Starting network node on port {}...\n", port);
     
     let listen_addr_str = format!("/ip4/0.0.0.0/tcp/{}", port);
@@ -127,41 +329,48 @@ async fn handle_start_node(port: u16, bootstrap: Option<String>, verbose: bool) 
         if let Err(e) = node.dial(addr).await { println!("Failed to connect to bootstrap: {}", e); }
     }
     
+    if let Some(room_id) = &room {
+        println!("Joining room: {}", room_id);
+        if let Err(e) = node.start_providing(room_id).await {
+            println!("Failed to join room: {}", e);
+        } else {
+            println!("Started providing room in DHT");
+            node.get_providers(room_id);
+        }
+    }
+    
     println!("\nListening for connections... (Ctrl+C to stop)");
     println!("Features: AutoNAT, DCUtR, Kademlia DHT\n");
     
-    loop {
-        if let Some(event) = node.next_event().await {
-            match event {
-                agora_core::network::NetworkEvent::Listening(addr) => println!("[LISTENING] {}", addr),
-                agora_core::network::NetworkEvent::PeerConnected { peer_id, addr } => {
-                    println!("[CONNECTED] {} at {}", peer_id, addr)
-                }
-                agora_core::network::NetworkEvent::PeerDisconnected { peer_id, .. } => {
-                    println!("[DISCONNECTED] {}", peer_id)
-                }
-                agora_core::network::NetworkEvent::PeerIdentified { peer_id, listen_addrs } => {
-                    println!("[IDENTIFIED] {} ({} addresses)", peer_id, listen_addrs.len());
-                    if verbose {
-                        for addr in listen_addrs { println!("  - {}", addr); }
-                    }
-                }
-                agora_core::network::NetworkEvent::ProvidersFound { room_id, providers } => {
-                    println!("[PROVIDERS] Room {} has {} providers", room_id, providers.len())
-                }
-                agora_core::network::NetworkEvent::PingResult { peer_id, result } => {
-                    if verbose || result.is_err() {
-                        match result {
-                            Ok(()) => println!("[PING] {} OK", peer_id),
-                            Err(e) => println!("[PING] {} FAILED: {}", peer_id, e),
-                        }
-                    }
-                }
-                agora_core::network::NetworkEvent::NatStatusChanged { is_public } => {
-                    println!("[NAT] {}", if is_public { "Public IP" } else { "Behind NAT - hole punching enabled" })
-                }
-                agora_core::network::NetworkEvent::BootstrapComplete => println!("[BOOTSTRAP] Complete"),
+    let mut event_rx = node.subscribe_events();
+    
+    tokio::spawn(async move {
+        node.run().await;
+    });
+    
+    while let Ok(event) = event_rx.recv().await {
+        match event {
+            agora_core::network::NetworkEvent::Listening(addr) => println!("[LISTENING] {}", addr),
+            agora_core::network::NetworkEvent::PeerConnected { peer_id, addr } => {
+                println!("[CONNECTED] {} at {}", peer_id, addr)
             }
+            agora_core::network::NetworkEvent::PeerDisconnected { peer_id } => {
+                println!("[DISCONNECTED] {}", peer_id)
+            }
+            agora_core::network::NetworkEvent::PeerIdentified { peer_id, listen_addrs } => {
+                println!("[IDENTIFIED] {} ({} addresses)", peer_id, listen_addrs.len());
+                if verbose {
+                    for addr in listen_addrs { println!("  - {}", addr); }
+                }
+            }
+            agora_core::network::NetworkEvent::ProvidersFound { room_id, providers } => {
+                println!("[PROVIDERS] Room {} has {} providers", room_id, providers.len())
+            }
+            agora_core::network::NetworkEvent::NatStatusChanged { is_public } => {
+                println!("[NAT] {}", if is_public { "Public IP" } else { "Behind NAT - hole punching enabled" })
+            }
+            agora_core::network::NetworkEvent::BootstrapComplete => println!("[BOOTSTRAP] Complete"),
+            _ => {}
         }
     }
 }
@@ -201,9 +410,8 @@ fn handle_test_encrypt(message: &str) {
     let encrypted = channel.encrypt(message.as_bytes()).expect("Encryption failed");
     
     println!("\nEncrypted Message:");
-    println!("  Nonce:      {}", encrypted.nonce);
+    println!("  Nonce:      {}", hex::encode(encrypted.nonce));
     println!("  Ciphertext: {}", hex::encode(&encrypted.ciphertext));
-    println!("  Tag:        {}", hex::encode(encrypted.tag));
     
     let decrypted = channel.decrypt(&encrypted).expect("Decryption failed");
     println!("\nDecrypted: \"{}\"", String::from_utf8(decrypted).expect("Invalid UTF-8"));

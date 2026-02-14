@@ -1,12 +1,14 @@
 use std::sync::Arc;
+use std::sync::mpsc::{self, Sender, Receiver};
+use std::thread::{self, JoinHandle};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{Device, SampleFormat, Stream, StreamConfig};
 use crate::error::{Error, AgoraResult};
 
 pub const SAMPLE_RATE: u32 = 48000;
 pub const CHANNELS: u16 = 1;
-pub const FRAME_SIZE: usize = 960; // 20ms at 48kHz
-pub const BITRATE: i32 = 32000; // 32 kbps default
+pub const FRAME_SIZE: usize = 960;
+pub const BITRATE: i32 = 32000;
 
 #[derive(Debug, Clone)]
 pub struct AudioConfig {
@@ -165,6 +167,7 @@ impl AudioDevice {
 
 pub type AudioFrame = Vec<f32>;
 
+#[derive(Debug, Clone)]
 pub struct AudioStats {
     pub frames_processed: u64,
     pub frames_dropped: u64,
@@ -183,61 +186,51 @@ impl AudioStats {
     }
 }
 
-pub struct AudioPipeline {
-    config: AudioConfig,
+enum AudioCommand {
+    Stop,
+    SetNoiseGate(f32),
+}
+
+struct AudioBackend {
     input_stream: Option<Stream>,
     output_stream: Option<Stream>,
     input_buffer: Arc<std::sync::Mutex<Vec<f32>>>,
     output_buffer: Arc<std::sync::Mutex<Vec<f32>>>,
-    stats: AudioStats,
-    noise_gate_threshold: f32,
-    is_running: bool,
 }
 
-impl AudioPipeline {
-    pub fn new(config: AudioConfig) -> Self {
+impl AudioBackend {
+    fn new() -> Self {
         Self {
-            config,
             input_stream: None,
             output_stream: None,
             input_buffer: Arc::new(std::sync::Mutex::new(Vec::new())),
             output_buffer: Arc::new(std::sync::Mutex::new(Vec::new())),
-            stats: AudioStats::new(),
-            noise_gate_threshold: 0.01,
-            is_running: false,
         }
     }
     
-    pub fn start(&mut self) -> AgoraResult<()> {
-        if self.is_running {
-            return Ok(());
-        }
-        
-        self.start_input_stream()?;
+    fn start(&mut self, config: &AudioConfig) -> AgoraResult<()> {
+        self.start_input_stream(config)?;
         self.start_output_stream()?;
-        
-        self.is_running = true;
-        tracing::info!("Audio pipeline started");
-        
+        tracing::info!("Audio backend started");
         Ok(())
     }
     
-    fn start_input_stream(&mut self) -> AgoraResult<()> {
+    fn start_input_stream(&mut self, config: &AudioConfig) -> AgoraResult<()> {
         let device = AudioDevice::default_input()?;
         let supported_config = device.device
             .default_input_config()
             .map_err(|e| Error::Audio(format!("Input config error: {}", e)))?;
         
         let sample_format = supported_config.sample_format();
-        let config: StreamConfig = supported_config.into();
+        let stream_config: StreamConfig = supported_config.into();
         
         let buffer = self.input_buffer.clone();
-        let noise_gate = self.noise_gate_threshold;
-        let enable_noise_suppression = self.config.enable_noise_suppression;
+        let noise_gate = 0.01;
+        let enable_noise_suppression = config.enable_noise_suppression;
         
         let stream = match sample_format {
             SampleFormat::F32 => device.device.build_input_stream(
-                &config,
+                &stream_config,
                 move |data: &[f32], _: &cpal::InputCallbackInfo| {
                     let mut buf = buffer.lock().unwrap();
                     for &sample in data {
@@ -249,7 +242,6 @@ impl AudioPipeline {
                         buf.push(processed);
                     }
                     
-                    // Keep buffer bounded
                     if buf.len() > FRAME_SIZE * 10 {
                         buf.drain(0..FRAME_SIZE);
                     }
@@ -258,7 +250,7 @@ impl AudioPipeline {
                 None,
             ),
             SampleFormat::I16 => device.device.build_input_stream(
-                &config,
+                &stream_config,
                 move |data: &[i16], _: &cpal::InputCallbackInfo| {
                     let mut buf = buffer.lock().unwrap();
                     for &sample in data {
@@ -291,13 +283,13 @@ impl AudioPipeline {
             .map_err(|e| Error::Audio(format!("Output config error: {}", e)))?;
         
         let sample_format = supported_config.sample_format();
-        let config: StreamConfig = supported_config.into();
+        let stream_config: StreamConfig = supported_config.into();
         
         let buffer = self.output_buffer.clone();
         
         let stream = match sample_format {
             SampleFormat::F32 => device.device.build_output_stream(
-                &config,
+                &stream_config,
                 move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
                     let mut buf = buffer.lock().unwrap();
                     let len = data.len().min(buf.len());
@@ -308,7 +300,7 @@ impl AudioPipeline {
                 None,
             ),
             SampleFormat::I16 => device.device.build_output_stream(
-                &config,
+                &stream_config,
                 move |data: &mut [i16], _: &cpal::OutputCallbackInfo| {
                     let mut buf = buffer.lock().unwrap();
                     let to_drain = data.len().min(buf.len());
@@ -336,9 +328,86 @@ impl AudioPipeline {
         Ok(())
     }
     
-    pub fn stop(&mut self) {
+    fn stop(&mut self) {
         self.input_stream = None;
         self.output_stream = None;
+        tracing::info!("Audio backend stopped");
+    }
+}
+
+pub struct AudioPipeline {
+    config: AudioConfig,
+    input_buffer: Arc<std::sync::Mutex<Vec<f32>>>,
+    output_buffer: Arc<std::sync::Mutex<Vec<f32>>>,
+    stats: AudioStats,
+    noise_gate_threshold: f32,
+    is_running: bool,
+    command_tx: Option<Sender<AudioCommand>>,
+    _thread_handle: Option<JoinHandle<()>>,
+}
+
+impl AudioPipeline {
+    pub fn new(config: AudioConfig) -> Self {
+        Self {
+            config,
+            input_buffer: Arc::new(std::sync::Mutex::new(Vec::new())),
+            output_buffer: Arc::new(std::sync::Mutex::new(Vec::new())),
+            stats: AudioStats::new(),
+            noise_gate_threshold: 0.01,
+            is_running: false,
+            command_tx: None,
+            _thread_handle: None,
+        }
+    }
+    
+    pub fn start(&mut self) -> AgoraResult<()> {
+        if self.is_running {
+            return Ok(());
+        }
+        
+        let config = self.config.clone();
+        let input_buffer = self.input_buffer.clone();
+        let output_buffer = self.output_buffer.clone();
+        let (tx, rx): (Sender<AudioCommand>, Receiver<AudioCommand>) = mpsc::channel();
+        
+        let handle = thread::spawn(move || {
+            let mut backend = AudioBackend::new();
+            backend.input_buffer = input_buffer;
+            backend.output_buffer = output_buffer;
+            
+            if let Err(e) = backend.start(&config) {
+                tracing::error!("Failed to start audio backend: {}", e);
+                return;
+            }
+            
+            loop {
+                match rx.try_recv() {
+                    Ok(AudioCommand::Stop) | Err(mpsc::TryRecvError::Disconnected) => {
+                        backend.stop();
+                        break;
+                    }
+                    Ok(AudioCommand::SetNoiseGate(threshold)) => {
+                        tracing::info!("Noise gate threshold set to {}", threshold);
+                    }
+                    Err(mpsc::TryRecvError::Empty) => {
+                        thread::sleep(std::time::Duration::from_millis(10));
+                    }
+                }
+            }
+        });
+        
+        self.command_tx = Some(tx);
+        self._thread_handle = Some(handle);
+        self.is_running = true;
+        
+        tracing::info!("Audio pipeline started");
+        Ok(())
+    }
+    
+    pub fn stop(&mut self) {
+        if let Some(tx) = self.command_tx.take() {
+            let _ = tx.send(AudioCommand::Stop);
+        }
         self.is_running = false;
         tracing::info!("Audio pipeline stopped");
     }
@@ -370,6 +439,9 @@ impl AudioPipeline {
     
     pub fn set_noise_gate_threshold(&mut self, threshold: f32) {
         self.noise_gate_threshold = threshold;
+        if let Some(tx) = &self.command_tx {
+            let _ = tx.send(AudioCommand::SetNoiseGate(threshold));
+        }
     }
 }
 
@@ -377,7 +449,6 @@ fn apply_noise_gate(sample: f32, threshold: f32) -> f32 {
     if sample.abs() < threshold {
         0.0
     } else {
-        // Simple noise reduction: attenuate quiet sounds
         let ratio = (sample.abs() - threshold) / (1.0 - threshold);
         sample * ratio
     }
@@ -432,7 +503,6 @@ pub fn mix_audio(inputs: &[&[f32]], weights: &[f32]) -> Vec<f32> {
         }
     }
     
-    // Clamp to prevent clipping
     for sample in output.iter_mut() {
         *sample = sample.clamp(-1.0, 1.0);
     }
@@ -515,7 +585,6 @@ mod tests {
         let samples = vec![1.0, 2.0, 3.0, 4.0];
         let resampled = resample_nearest(&samples, 48000, 24000);
         
-        // Should be roughly half the size
         assert!(resampled.len() < samples.len());
     }
 }

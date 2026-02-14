@@ -1,0 +1,33 @@
+[package]
+name = "agora-node"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "agora-node"
+path = "src/main.rs"
+
+[dependencies]
+agora-core = { path = "../core" }
+libp2p.workspace = true
+tokio.workspace = true
+tokio-util = { version = "0.7", features = ["rt"] }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+clap.workspace = true
+futures.workspace = true
+axum.workspace = true
+tower.workspace = true
+tower-http.workspace = true
+toml.workspace = true
+prometheus.workspace = true
+lazy_static.workspace = true
+signal-hook.workspace = true
+signal-hook-tokio.workspace = true
+reqwest = { version = "0.11", default-features = false, features = ["json", "rustls-tls"] }
+uuid = { version = "1.0", features = ["v4"] }

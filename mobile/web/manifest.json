@@ -1,13 +1,14 @@
 {
-    "name": "agora_mobile",
-    "short_name": "agora_mobile",
+    "name": "Agora - P2P Voice Chat",
+    "short_name": "Agora",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#1a1a2e",
+    "theme_color": "#4a9eff",
+    "description": "Decentralized P2P Voice Chat - No servers, no tracking, just voice",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
+    "categories": ["social", "communication"],
     "icons": [
         {
             "src": "icons/Icon-192.png",

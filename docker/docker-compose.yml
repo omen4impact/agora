@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  agora-node:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: agora/node:latest
+    container_name: agora-node
+    restart: unless-stopped
+    ports:
+      - "7001:7001"
+      - "8080:8080"
+      - "9090:9090"
+    volumes:
+      - ./node.toml:/etc/agora/node.toml:ro
+      - agora-data:/var/lib/agora
+      - agora-logs:/var/log/agora
+    environment:
+      - RUST_LOG=info
+    networks:
+      - agora-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+volumes:
+  agora-data:
+  agora-logs:
+
+networks:
+  agora-network:
+    driver: bridge

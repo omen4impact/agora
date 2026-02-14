@@ -1,0 +1,161 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            artifact: agora-core-x86_64-linux
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            artifact: agora-core-x86_64-macos
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            artifact: agora-core-aarch64-macos
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            artifact: agora-core-x86_64-windows
+            ext: .exe
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install Linux dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libopus-dev
+
+      - name: Install macOS dependencies
+        if: matrix.os == 'macos-latest'
+        run: |
+          brew install opus
+
+      - name: Build
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Prepare artifacts (Unix)
+        if: matrix.os != 'windows-latest'
+        run: |
+          mkdir -p dist
+          cp target/${{ matrix.target }}/release/agora-core dist/${{ matrix.artifact }}
+          cp target/${{ matrix.target }}/release/agora-node dist/${{ matrix.artifact }}-node || true
+          cp target/${{ matrix.target }}/release/agora-cli dist/${{ matrix.artifact }}-cli || true
+          cd dist && tar -czvf ${{ matrix.artifact }}.tar.gz *
+
+      - name: Prepare artifacts (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          mkdir dist
+          cp target/${{ matrix.target }}/release/agora-core.exe dist/${{ matrix.artifact }}.exe
+          cp target/${{ matrix.target }}/release/agora-node.exe dist/${{ matrix.artifact }}-node.exe || true
+          cp target/${{ matrix.target }}/release/agora-cli.exe dist/${{ matrix.artifact }}-cli.exe || true
+          cd dist && 7z a ${{ matrix.artifact }}.zip *
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/${{ matrix.artifact }}.*
+
+  build-mobile:
+    name: Build Mobile
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.19.0'
+
+      - name: Build Android APK
+        working-directory: mobile
+        run: |
+          flutter pub get
+          flutter build apk --release
+
+      - name: Build Web
+        working-directory: mobile
+        run: |
+          flutter build web --release
+
+      - name: Prepare artifacts
+        run: |
+          mkdir -p dist
+          cp mobile/build/app/outputs/flutter-apk/app-release.apk dist/agora-mobile-android.apk
+          cd mobile/build/web && zip -r ../../../dist/agora-mobile-web.zip .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: agora-mobile
+          path: dist/*
+
+  release:
+    name: Create Release
+    needs: [build, build-mobile]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Display structure of downloaded files
+        run: ls -R artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            artifacts/**/*
+          generate_release_notes: true
+          body: |
+            ## Agora ${{ github.ref_name }}
+            
+            ### Downloads
+            | Platform | File |
+            |----------|------|
+            | Linux x64 | `agora-core-x86_64-linux.tar.gz` |
+            | macOS x64 | `agora-core-x86_64-macos.tar.gz` |
+            | macOS ARM | `agora-core-aarch64-macos.tar.gz` |
+            | Windows x64 | `agora-core-x86_64-windows.zip` |
+            | Android | `agora-mobile-android.apk` |
+            | Web | `agora-mobile-web.zip` |
+            
+            ### Installation
+            
+            **Linux/macOS:**
+            ```bash
+            tar -xzf agora-core-*.tar.gz
+            ./agora-core
+            ```
+            
+            **Windows:**
+            Extract `agora-core-x86_64-windows.zip` and run `agora-core.exe`
+            
+            **Android:**
+            Install the APK on your device
+            
+            **Web:**
+            Extract and serve the web build from any static file server

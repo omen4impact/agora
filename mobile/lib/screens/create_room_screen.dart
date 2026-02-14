@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
+import '../services/identity_service.dart';
+import 'session_screen.dart';
 
 class CreateRoomScreen extends StatefulWidget {
   const CreateRoomScreen({super.key});
@@ -11,22 +14,19 @@ class CreateRoomScreen extends StatefulWidget {
 class _CreateRoomScreenState extends State<CreateRoomScreen> {
   final _roomNameController = TextEditingController();
   final _passwordController = TextEditingController();
+  String? _generatedRoomId;
   String? _generatedLink;
   bool _isCreating = false;
 
-  String _generateRoomId() {
-    final random = DateTime.now().millisecondsSinceEpoch;
-    final hash = random.toRadixString(16).padLeft(16, '0');
-    return hash.substring(0, 16);
-  }
-
   void _createRoom() {
+    final identity = context.read<IdentityService>();
+    
     setState(() {
       _isCreating = true;
     });
 
-    final roomId = _generateRoomId();
-    _generatedLink = 'agora://room/$roomId';
+    _generatedRoomId = identity.generateRoomId();
+    _generatedLink = identity.createRoomLink(_generatedRoomId!);
 
     setState(() {
       _isCreating = false;
@@ -43,6 +43,23 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
         ),
       );
     }
+  }
+
+  void _startSession() {
+    if (_generatedRoomId == null) return;
+    
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SessionScreen(
+          roomId: _generatedRoomId!,
+          roomName: _roomNameController.text.isNotEmpty 
+              ? _roomNameController.text 
+              : null,
+          roomLink: _generatedLink!,
+        ),
+      ),
+    );
   }
 
   @override
@@ -166,28 +183,45 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  OutlinedButton.icon(
-                    onPressed: _copyLink,
-                    icon: const Icon(Icons.copy),
-                    label: const Text('Copy Link'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: const Color(0xFF00D9FF),
-                    ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _copyLink,
+                          icon: const Icon(Icons.copy),
+                          label: const Text('Copy Link'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xFF00D9FF),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () {
+                            Clipboard.setData(ClipboardData(text: _generatedRoomId!));
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Room ID copied'),
+                                backgroundColor: Color(0xFF00D9FF),
+                              ),
+                            );
+                          },
+                          icon: const Icon(Icons.tag),
+                          label: const Text('Copy ID'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xFF00D9FF),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                   const Spacer(),
                   SizedBox(
                     width: double.infinity,
                     height: 56,
                     child: ElevatedButton(
-                      onPressed: () {
-                        // TODO: Start voice chat
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Voice chat starting...'),
-                            backgroundColor: Color(0xFF00FF88),
-                          ),
-                        );
-                      },
+                      onPressed: _startSession,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF00FF88),
                         foregroundColor: const Color(0xFF1A1A2E),

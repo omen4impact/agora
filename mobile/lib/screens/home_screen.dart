@@ -82,7 +82,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
         const SizedBox(height: 16),
-        const Text(
+        Text(
           'AGORA',
           style: TextStyle(
             fontSize: 36,
