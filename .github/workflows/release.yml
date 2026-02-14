@@ -56,7 +56,7 @@ jobs:
         if: matrix.os != 'windows-latest'
         run: |
           mkdir -p dist
-          cp target/${{ matrix.target }}/release/agora-cli dist/
+          cp target/${{ matrix.target }}/release/agora dist/
           cp target/${{ matrix.target }}/release/agora-node dist/
           cd dist && tar -czvf agora-${{ matrix.target }}.tar.gz *
 
@@ -64,7 +64,7 @@ jobs:
         if: matrix.os == 'windows-latest'
         run: |
           mkdir dist
-          cp target/${{ matrix.target }}/release/agora-cli.exe dist/
+          cp target/${{ matrix.target }}/release/agora.exe dist/
           cp target/${{ matrix.target }}/release/agora-node.exe dist/
           cd dist && 7z a agora-${{ matrix.target }}.zip *
 
@@ -149,9 +149,9 @@ jobs:
             **Linux/macOS:**
             ```bash
             tar -xzf agora-*.tar.gz
-            ./agora-cli --help
+            ./agora --help
             ./agora-node --help
             ```
             
             **Windows:**
-            Extract the zip and run `agora-cli.exe` or `agora-node.exe`
+            Extract the zip and run `agora.exe` or `agora-node.exe`
