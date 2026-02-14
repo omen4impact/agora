@@ -14,9 +14,8 @@ fn to_c_string(s: String) -> *mut c_char {
     match CString::new(s) {
         Ok(cstr) => cstr.into_raw(),
         Err(_) => {
-            let fallback = CString::new("ERROR:Internal error - invalid string").unwrap_or_else(|_| {
-                CString::new("ERROR").unwrap()
-            });
+            let fallback = CString::new("ERROR:Internal error - invalid string")
+                .unwrap_or_else(|_| CString::new("ERROR").unwrap());
             fallback.into_raw()
         }
     }
@@ -35,13 +34,12 @@ pub extern "C" fn agora_init() -> *mut c_char {
     let Some(rt) = runtime() else {
         return error_c_string("Failed to create runtime");
     };
-    
+
     let result: Result<String, String> = rt.block_on(async {
-        let identity = crate::Identity::generate()
-            .map_err(|e| e.to_string())?;
+        let identity = crate::Identity::generate().map_err(|e| e.to_string())?;
         Ok(identity.peer_id())
     });
-    
+
     match result {
         Ok(peer_id) => to_c_string(peer_id),
         Err(e) => error_c_string(&e),
@@ -49,7 +47,7 @@ pub extern "C" fn agora_init() -> *mut c_char {
 }
 
 /// Free a string returned by Agora FFI functions.
-/// 
+///
 /// # Safety
 /// - `s` must be a valid pointer returned by an Agora FFI function, or null.
 /// - `s` must not have been freed already.
@@ -70,7 +68,7 @@ pub extern "C" fn agora_generate_room_id() -> *mut c_char {
 }
 
 /// Create an agora:// room link from a room ID.
-/// 
+///
 /// # Safety
 /// - `room_id` must be a valid null-terminated C string.
 /// - Caller must free the returned string with `agora_free_string`.
@@ -79,19 +77,19 @@ pub unsafe extern "C" fn agora_create_room_link(room_id: *const c_char) -> *mut 
     if room_id.is_null() {
         return error_c_string("Null room_id pointer");
     }
-    
+
     let room_id_str = match CStr::from_ptr(room_id).to_str() {
         Ok(s) => s,
         Err(_) => return error_c_string("Invalid UTF-8 in room_id"),
     };
-    
+
     let link = format!("agora://room/{}", room_id_str);
     to_c_string(link)
 }
 
 /// Parse an agora:// room link and extract room ID and optional password.
 /// Returns "room_id:password" or "room_id" if no password.
-/// 
+///
 /// # Safety
 /// - `link` must be a valid null-terminated C string.
 /// - Caller must free the returned string with `agora_free_string`.
@@ -100,12 +98,12 @@ pub unsafe extern "C" fn agora_parse_room_link(link: *const c_char) -> *mut c_ch
     if link.is_null() {
         return error_c_string("Null link pointer");
     }
-    
+
     let link_str = match CStr::from_ptr(link).to_str() {
         Ok(s) => s,
         Err(_) => return error_c_string("Invalid UTF-8 in link"),
     };
-    
+
     match crate::room::parse_room_link(link_str) {
         Some((room_id, password)) => {
             let result = if let Some(pwd) = password {
@@ -128,22 +126,25 @@ pub struct AgoraAudioDevice {
 }
 
 /// Get list of available audio devices.
-/// 
+///
 /// # Safety
 /// - `out_devices` must be a valid pointer to a pointer.
 /// - `out_count` must be a valid pointer to a usize.
 /// - Caller must free the returned devices with `agora_free_audio_devices`.
 #[no_mangle]
-pub unsafe extern "C" fn agora_get_audio_devices(out_devices: *mut *mut AgoraAudioDevice, out_count: *mut usize) {
+pub unsafe extern "C" fn agora_get_audio_devices(
+    out_devices: *mut *mut AgoraAudioDevice,
+    out_count: *mut usize,
+) {
     if out_devices.is_null() || out_count.is_null() {
         return;
     }
-    
+
     let input_devices = crate::AudioDevice::input_devices().unwrap_or_default();
     let output_devices = crate::AudioDevice::output_devices().unwrap_or_default();
-    
+
     let mut devices: Vec<AgoraAudioDevice> = Vec::new();
-    
+
     for d in input_devices {
         if let Ok(name) = CString::new(d.name) {
             devices.push(AgoraAudioDevice {
@@ -154,7 +155,7 @@ pub unsafe extern "C" fn agora_get_audio_devices(out_devices: *mut *mut AgoraAud
             });
         }
     }
-    
+
     for d in output_devices {
         if let Ok(name) = CString::new(d.name) {
             devices.push(AgoraAudioDevice {
@@ -165,14 +166,14 @@ pub unsafe extern "C" fn agora_get_audio_devices(out_devices: *mut *mut AgoraAud
             });
         }
     }
-    
+
     let count = devices.len();
     if count == 0 {
         *out_count = 0;
         *out_devices = ptr::null_mut();
         return;
     }
-    
+
     let layout = match std::alloc::Layout::array::<AgoraAudioDevice>(count) {
         Ok(l) => l,
         Err(_) => {
@@ -181,7 +182,7 @@ pub unsafe extern "C" fn agora_get_audio_devices(out_devices: *mut *mut AgoraAud
             return;
         }
     };
-    
+
     let ptr = std::alloc::alloc_zeroed(layout) as *mut AgoraAudioDevice;
     if ptr.is_null() {
         for device in devices {
@@ -193,14 +194,14 @@ pub unsafe extern "C" fn agora_get_audio_devices(out_devices: *mut *mut AgoraAud
         *out_devices = ptr::null_mut();
         return;
     }
-    
+
     ptr::copy_nonoverlapping(devices.as_ptr(), ptr, count);
     *out_count = count;
     *out_devices = ptr;
 }
 
 /// Free audio device list returned by `agora_get_audio_devices`.
-/// 
+///
 /// # Safety
 /// - `devices` must be a valid pointer returned by `agora_get_audio_devices`, or null.
 /// - `count` must be the same count returned by `agora_get_audio_devices`.
@@ -210,14 +211,14 @@ pub unsafe extern "C" fn agora_free_audio_devices(devices: *mut AgoraAudioDevice
     if devices.is_null() || count == 0 {
         return;
     }
-    
+
     for i in 0..count {
         let device = &mut *devices.add(i);
         if !device.name.is_null() {
             drop(CString::from_raw(device.name));
         }
     }
-    
+
     if let Ok(layout) = std::alloc::Layout::array::<AgoraAudioDevice>(count) {
         std::alloc::dealloc(devices as *mut u8, layout);
     }
@@ -241,12 +242,12 @@ pub extern "C" fn agora_detect_nat() -> AgoraNATInfo {
             description: error_c_string("Failed to create runtime"),
         };
     };
-    
+
     let result: Result<crate::NatType, String> = rt.block_on(async {
         let mut nat = crate::NatTraversal::new(None);
         nat.detect_nat_type().await.map_err(|e| e.to_string())
     });
-    
+
     match result {
         Ok(nat) => {
             let type_str = format!("{:?}", nat);
@@ -265,7 +266,7 @@ pub extern "C" fn agora_detect_nat() -> AgoraNATInfo {
 }
 
 /// Free NAT info returned by `agora_detect_nat`.
-/// 
+///
 /// # Safety
 /// - `info` must be a valid `AgoraNATInfo` returned by `agora_detect_nat`.
 /// - Must not be called more than once for the same info.
@@ -291,13 +292,13 @@ pub struct AgoraMixerInfo {
 #[no_mangle]
 pub extern "C" fn agora_test_mixer(participants: usize) -> AgoraMixerInfo {
     let mut mixer = crate::MixerManager::new("local_peer".to_string(), None);
-    
+
     for i in 0..participants {
         mixer.add_participant(format!("peer_{}", i));
     }
-    
+
     let status = mixer.get_status();
-    
+
     AgoraMixerInfo {
         topology: to_c_string(format!("{:?}", status.topology)),
         participant_count: status.participant_count,

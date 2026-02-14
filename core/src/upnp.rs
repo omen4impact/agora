@@ -163,14 +163,17 @@ impl UpnpClient {
             self.discover().await?;
         }
 
-        let device = self.devices.first()
+        let device = self
+            .devices
+            .first()
             .ok_or_else(|| Error::Network("No UPnP device found".to_string()))?;
 
         let lease = mapping.lease_duration.min(self.config.lease_duration);
 
         tracing::info!(
             "Adding UPnP port mapping: {}:{} -> {}:{} ({}, lease: {:?})",
-            self.external_ip.unwrap_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED)),
+            self.external_ip
+                .unwrap_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED)),
             mapping.external_port,
             mapping.internal_ip,
             mapping.internal_port,
@@ -187,19 +190,21 @@ impl UpnpClient {
         Ok(())
     }
 
-    pub async fn remove_port_mapping(&mut self, external_port: u16, protocol: Protocol) -> AgoraResult<()> {
+    pub async fn remove_port_mapping(
+        &mut self,
+        external_port: u16,
+        protocol: Protocol,
+    ) -> AgoraResult<()> {
         if self.devices.is_empty() {
             self.discover().await?;
         }
 
-        let device = self.devices.first()
+        let device = self
+            .devices
+            .first()
             .ok_or_else(|| Error::Network("No UPnP device found".to_string()))?;
 
-        tracing::info!(
-            "Removing UPnP port mapping: {} {}",
-            external_port,
-            protocol
-        );
+        tracing::info!("Removing UPnP port mapping: {} {}", external_port, protocol);
 
         tracing::debug!(
             "UPnP DeletePortMapping from device {} at {}",
@@ -386,7 +391,9 @@ impl PortForwarder {
             }
         }
 
-        Err(Error::Network("No UPnP or NAT-PMP support available".to_string()))
+        Err(Error::Network(
+            "No UPnP or NAT-PMP support available".to_string(),
+        ))
     }
 
     pub async fn add_mapping(
@@ -405,39 +412,53 @@ impl PortForwarder {
         }
 
         if let Some(ref mut nat_pmp) = self.nat_pmp {
-            nat_pmp.map_port(internal_port, external_port, protocol, UPNP_DEFAULT_LEASE).await?;
+            nat_pmp
+                .map_port(internal_port, external_port, protocol, UPNP_DEFAULT_LEASE)
+                .await?;
             let mapping = PortMapping::new(external_port, internal_port, internal_ip, protocol);
             self.mappings.push(mapping.clone());
             return Ok(mapping);
         }
 
-        Err(Error::Network("No port forwarding method available".to_string()))
+        Err(Error::Network(
+            "No port forwarding method available".to_string(),
+        ))
     }
 
-    pub async fn remove_mapping(&mut self, external_port: u16, protocol: Protocol) -> AgoraResult<()> {
+    pub async fn remove_mapping(
+        &mut self,
+        external_port: u16,
+        protocol: Protocol,
+    ) -> AgoraResult<()> {
         if let Some(ref mut upnp) = self.upnp {
             upnp.remove_port_mapping(external_port, protocol).await?;
-            self.mappings.retain(|m| !(m.external_port == external_port && m.protocol == protocol));
+            self.mappings
+                .retain(|m| !(m.external_port == external_port && m.protocol == protocol));
             return Ok(());
         }
 
         if let Some(ref mut nat_pmp) = self.nat_pmp {
             nat_pmp.unmap_port(external_port, protocol).await?;
-            self.mappings.retain(|m| !(m.external_port == external_port && m.protocol == protocol));
+            self.mappings
+                .retain(|m| !(m.external_port == external_port && m.protocol == protocol));
             return Ok(());
         }
 
-        Err(Error::Network("No port forwarding method available".to_string()))
+        Err(Error::Network(
+            "No port forwarding method available".to_string(),
+        ))
     }
 
     pub fn get_local_ip(&self) -> AgoraResult<IpAddr> {
         let socket = std::net::UdpSocket::bind("0.0.0.0:0")
             .map_err(|e| Error::Network(format!("Failed to bind socket: {}", e)))?;
 
-        socket.connect("8.8.8.8:80")
+        socket
+            .connect("8.8.8.8:80")
             .map_err(|e| Error::Network(format!("Failed to connect: {}", e)))?;
 
-        let local_addr = socket.local_addr()
+        let local_addr = socket
+            .local_addr()
             .map_err(|e| Error::Network(format!("Failed to get local address: {}", e)))?;
 
         Ok(local_addr.ip())
@@ -453,7 +474,9 @@ impl PortForwarder {
             return Ok(IpAddr::V4(ip));
         }
 
-        Err(Error::Network("No port forwarding method available".to_string()))
+        Err(Error::Network(
+            "No port forwarding method available".to_string(),
+        ))
     }
 
     pub fn has_upnp(&self) -> bool {
@@ -473,7 +496,10 @@ impl PortForwarder {
 
         let mappings = self.mappings.clone();
         for mapping in mappings {
-            if let Err(e) = self.remove_mapping(mapping.external_port, mapping.protocol).await {
+            if let Err(e) = self
+                .remove_mapping(mapping.external_port, mapping.protocol)
+                .await
+            {
                 tracing::warn!("Failed to remove mapping: {}", e);
             }
         }
@@ -559,8 +585,7 @@ mod tests {
 
     #[test]
     fn test_nat_pmp_client_with_gateway() {
-        let client = NatPmpClient::new()
-            .with_gateway(Ipv4Addr::new(192, 168, 1, 1));
+        let client = NatPmpClient::new().with_gateway(Ipv4Addr::new(192, 168, 1, 1));
 
         assert_eq!(client.gateway(), Some(Ipv4Addr::new(192, 168, 1, 1)));
     }
@@ -577,7 +602,7 @@ mod tests {
     async fn test_upnp_client_discover() {
         let mut client = UpnpClient::new();
         let devices = client.discover().await.unwrap();
-        
+
         assert!(!devices.is_empty());
         assert!(client.has_devices());
         assert!(client.external_ip().is_some());
@@ -586,7 +611,7 @@ mod tests {
     #[tokio::test]
     async fn test_upnp_add_port_mapping() {
         let mut client = UpnpClient::new();
-        
+
         let mapping = PortMapping::new(
             7001,
             7001,
@@ -611,7 +636,7 @@ mod tests {
     async fn test_nat_pmp_discover_gateway() {
         let mut client = NatPmpClient::new();
         let gateway = client.discover_gateway().await.unwrap();
-        
+
         assert!(client.gateway().is_some());
         assert_eq!(client.gateway(), Some(gateway));
     }
@@ -620,7 +645,7 @@ mod tests {
     async fn test_nat_pmp_get_external_address() {
         let mut client = NatPmpClient::new();
         let addr = client.get_external_address().await.unwrap();
-        
+
         assert!(client.external_ip().is_some());
         assert_eq!(client.external_ip(), Some(addr));
     }
@@ -628,8 +653,10 @@ mod tests {
     #[tokio::test]
     async fn test_nat_pmp_map_port() {
         let mut client = NatPmpClient::new();
-        
-        let result = client.map_port(7001, 7001, Protocol::Udp, Duration::from_secs(3600)).await;
+
+        let result = client
+            .map_port(7001, 7001, Protocol::Udp, Duration::from_secs(3600))
+            .await;
         assert!(result.is_ok());
     }
 
@@ -637,7 +664,7 @@ mod tests {
     async fn test_port_forwarder_setup() {
         let mut forwarder = PortForwarder::new();
         let result = forwarder.setup().await;
-        
+
         assert!(result.is_ok());
         assert!(forwarder.has_upnp() || forwarder.has_nat_pmp());
     }

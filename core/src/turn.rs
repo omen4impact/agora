@@ -58,13 +58,13 @@ impl TurnServer {
             host.parse().unwrap()
         } else {
             let resolved = format!("{}:{}", host, port);
-            resolved
-                .parse()
-                .map_err(|e| Error::Network(format!("Invalid TURN server address '{}': {}", host, e)))?
+            resolved.parse().map_err(|e| {
+                Error::Network(format!("Invalid TURN server address '{}': {}", host, e))
+            })?
         };
         Ok(Self::new(addr))
     }
-    
+
     pub fn from_ip(ip: std::net::IpAddr, port: Option<u16>) -> Self {
         let port = port.unwrap_or(DEFAULT_TURN_PORT);
         Self::new(SocketAddr::new(ip, port))
@@ -204,7 +204,10 @@ impl TurnClient {
 
     fn simulate_relay_address(&self) -> AgoraResult<SocketAddr> {
         let port: u16 = 50000 + (rand::random::<u16>() % 10000);
-        Ok(SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::new(203, 0, 113, 1)), port))
+        Ok(SocketAddr::new(
+            std::net::IpAddr::V4(std::net::Ipv4Addr::new(203, 0, 113, 1)),
+            port,
+        ))
     }
 
     pub fn get_allocation(&self, server: SocketAddr) -> Option<&TurnAllocation> {
@@ -279,11 +282,7 @@ impl TurnCandidate {
     }
 
     pub fn to_ice_candidate(&self) -> crate::ice::Candidate {
-        crate::ice::Candidate::new_relayed(
-            self.relayed_addr,
-            self.server,
-            1,
-        )
+        crate::ice::Candidate::new_relayed(self.relayed_addr, self.server, 1)
     }
 }
 
@@ -293,15 +292,21 @@ mod tests {
 
     #[test]
     fn test_turn_server_creation() {
-        let server = TurnServer::from_ip(std::net::IpAddr::V4(std::net::Ipv4Addr::new(192, 0, 2, 1)), Some(3478));
+        let server = TurnServer::from_ip(
+            std::net::IpAddr::V4(std::net::Ipv4Addr::new(192, 0, 2, 1)),
+            Some(3478),
+        );
         assert_eq!(server.address.port(), 3478);
         assert!(!server.use_tls);
     }
 
     #[test]
     fn test_turn_server_tls() {
-        let server = TurnServer::from_ip(std::net::IpAddr::V4(std::net::Ipv4Addr::new(192, 0, 2, 1)), Some(5349))
-            .with_tls();
+        let server = TurnServer::from_ip(
+            std::net::IpAddr::V4(std::net::Ipv4Addr::new(192, 0, 2, 1)),
+            Some(5349),
+        )
+        .with_tls();
         assert!(server.use_tls);
     }
 
@@ -348,7 +353,10 @@ mod tests {
 
     #[test]
     fn test_turn_client_with_servers() {
-        let server = TurnServer::from_ip(std::net::IpAddr::V4(std::net::Ipv4Addr::new(192, 0, 2, 1)), None);
+        let server = TurnServer::from_ip(
+            std::net::IpAddr::V4(std::net::Ipv4Addr::new(192, 0, 2, 1)),
+            None,
+        );
         let client = TurnClient::with_servers(vec![server]);
 
         assert!(client.has_servers());
@@ -383,7 +391,13 @@ mod tests {
         );
 
         let ice_candidate = turn_candidate.to_ice_candidate();
-        assert_eq!(ice_candidate.candidate_type, crate::ice::CandidateType::Relayed);
-        assert_eq!(ice_candidate.connection_addr, "203.0.113.1:50000".parse().unwrap());
+        assert_eq!(
+            ice_candidate.candidate_type,
+            crate::ice::CandidateType::Relayed
+        );
+        assert_eq!(
+            ice_candidate.connection_addr,
+            "203.0.113.1:50000".parse().unwrap()
+        );
     }
 }

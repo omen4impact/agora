@@ -1,7 +1,7 @@
 use axum::{
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
-        State, Query, Path,
+        Path, Query, State,
     },
     response::Response,
     routing::get,
@@ -142,9 +142,10 @@ async fn websocket_handler(
     State(state): State<Arc<SignalingState>>,
     Query(params): Query<HashMap<String, String>>,
 ) -> Response {
-    let peer_id = params.get("peer_id").cloned().unwrap_or_else(|| {
-        uuid::Uuid::new_v4().to_string()
-    });
+    let peer_id = params
+        .get("peer_id")
+        .cloned()
+        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
     ws.on_upgrade(move |socket| handle_websocket(socket, state, peer_id))
 }
@@ -219,7 +220,11 @@ async fn handle_signaling_message(
     msg: SignalingMessage,
 ) {
     match msg {
-        SignalingMessage::Join { room_id, peer_id: joining_peer_id, display_name } => {
+        SignalingMessage::Join {
+            room_id,
+            peer_id: joining_peer_id,
+            display_name,
+        } => {
             let peer_info;
             {
                 let mut rooms = state.rooms.write().await;
@@ -236,7 +241,10 @@ async fn handle_signaling_message(
 
             let peers_list = {
                 let rooms = state.rooms.read().await;
-                rooms.get(&room_id).map(|r| r.get_peers()).unwrap_or_default()
+                rooms
+                    .get(&room_id)
+                    .map(|r| r.get_peers())
+                    .unwrap_or_default()
             };
 
             {
@@ -259,7 +267,10 @@ async fn handle_signaling_message(
             }
         }
 
-        SignalingMessage::Leave { room_id, peer_id: leaving_peer_id } => {
+        SignalingMessage::Leave {
+            room_id,
+            peer_id: leaving_peer_id,
+        } => {
             let mut rooms = state.rooms.write().await;
             if let Some(room) = rooms.get_mut(&room_id) {
                 room.remove_peer(&leaving_peer_id);
@@ -280,7 +291,13 @@ async fn handle_signaling_message(
             }
         }
 
-        SignalingMessage::IceCandidate { from, to, candidate, sdp_mid, sdp_mline_index } => {
+        SignalingMessage::IceCandidate {
+            from,
+            to,
+            candidate,
+            sdp_mid,
+            sdp_mline_index,
+        } => {
             let peers = state.peers.read().await;
             if let Some(peer) = peers.get(&to) {
                 let _ = peer.tx.send(SignalingMessage::IceCandidate {
@@ -325,7 +342,10 @@ async fn get_room_peers(
     State(state): State<Arc<SignalingState>>,
 ) -> axum::Json<Vec<PeerInfo>> {
     let rooms = state.rooms.read().await;
-    let peers = rooms.get(&room_id).map(|r| r.get_peers()).unwrap_or_default();
+    let peers = rooms
+        .get(&room_id)
+        .map(|r| r.get_peers())
+        .unwrap_or_default();
     axum::Json(peers)
 }
 
@@ -357,15 +377,15 @@ mod tests {
     #[test]
     fn test_room_peer_management() {
         let mut room = Room::new();
-        
+
         room.add_peer("peer1".to_string(), Some("Alice".to_string()));
         room.add_peer("peer2".to_string(), Some("Bob".to_string()));
-        
+
         assert_eq!(room.peers.len(), 2);
-        
+
         let peers = room.get_peers();
         assert_eq!(peers.len(), 2);
-        
+
         room.remove_peer("peer1");
         assert_eq!(room.peers.len(), 1);
     }
@@ -380,7 +400,7 @@ mod tests {
 
         let json = serde_json::to_string(&msg).unwrap();
         let decoded: SignalingMessage = serde_json::from_str(&json).unwrap();
-        
+
         match decoded {
             SignalingMessage::SdpOffer { from, to, sdp } => {
                 assert_eq!(from, "peer1");
@@ -403,9 +423,11 @@ mod tests {
 
         let json = serde_json::to_string(&msg).unwrap();
         let decoded: SignalingMessage = serde_json::from_str(&json).unwrap();
-        
+
         match decoded {
-            SignalingMessage::IceCandidate { candidate, sdp_mid, .. } => {
+            SignalingMessage::IceCandidate {
+                candidate, sdp_mid, ..
+            } => {
                 assert_eq!(candidate, "candidate:...");
                 assert_eq!(sdp_mid, Some("audio".to_string()));
             }

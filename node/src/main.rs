@@ -25,46 +25,46 @@ enum Commands {
     Start {
         #[arg(short, long, default_value = "/etc/agora/node.toml")]
         config: PathBuf,
-        
+
         #[arg(short, long)]
         foreground: bool,
     },
-    
+
     #[command(about = "Stop a running node")]
     Stop {
         #[arg(short, long, default_value = "/var/run/agora-node.pid")]
         pid_file: PathBuf,
     },
-    
+
     #[command(about = "Show node status")]
     Status {
         #[arg(short, long, default_value = "http://localhost:8080")]
         endpoint: String,
     },
-    
+
     #[command(about = "Generate default configuration")]
     Config {
         #[arg(short, long, default_value = "node.toml")]
         output: PathBuf,
     },
-    
+
     #[command(about = "Generate a new identity")]
     Identity {
         #[arg(short, long, default_value = "identity.bin")]
         output: PathBuf,
-        
+
         #[arg(short = 'n', long)]
         name: Option<String>,
     },
-    
+
     #[command(about = "Discover available nodes")]
     Discover {
         #[arg(short, long, default_value = "http://localhost:8080")]
         endpoint: String,
-        
+
         #[arg(short, long)]
         region: Option<String>,
-        
+
         #[arg(short = 'c', long, default_value = "mixer")]
         capability: String,
     },
@@ -82,24 +82,16 @@ async fn main() {
     let cli = Cli::parse();
 
     let result = match cli.command {
-        Commands::Start { config, foreground } => {
-            node::run(config, foreground).await
-        }
-        Commands::Stop { pid_file } => {
-            node::stop(pid_file).await
-        }
-        Commands::Status { endpoint } => {
-            node::status(endpoint).await
-        }
-        Commands::Config { output } => {
-            config::generate_default(&output)
-        }
-        Commands::Identity { output, name } => {
-            node::generate_identity(&output, name).await
-        }
-        Commands::Discover { endpoint, region, capability } => {
-            node::discover(endpoint, region, capability).await
-        }
+        Commands::Start { config, foreground } => node::run(config, foreground).await,
+        Commands::Stop { pid_file } => node::stop(pid_file).await,
+        Commands::Status { endpoint } => node::status(endpoint).await,
+        Commands::Config { output } => config::generate_default(&output),
+        Commands::Identity { output, name } => node::generate_identity(&output, name).await,
+        Commands::Discover {
+            endpoint,
+            region,
+            capability,
+        } => node::discover(endpoint, region, capability).await,
     };
 
     if let Err(e) = result {

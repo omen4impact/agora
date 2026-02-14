@@ -1,6 +1,6 @@
-use std::net::{SocketAddr, IpAddr};
-use std::time::Duration;
 use crate::error::AgoraResult;
+use std::net::{IpAddr, SocketAddr};
+use std::time::Duration;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NatType {
@@ -23,7 +23,7 @@ impl NatType {
             NatType::Unknown => false,
         }
     }
-    
+
     pub fn description(&self) -> &'static str {
         match self {
             NatType::Public => "Public IP (no NAT)",
@@ -55,7 +55,7 @@ impl ObservedAddr {
             nat_type,
         }
     }
-    
+
     pub fn to_multiaddr(&self) -> String {
         match self.public_ip {
             IpAddr::V4(ip) => format!("/ip4/{}/tcp/{}", ip, self.public_port),
@@ -97,43 +97,43 @@ impl NatTraversal {
             observed_addr: None,
         }
     }
-    
+
     pub async fn detect_nat_type(&mut self) -> AgoraResult<NatType> {
         tracing::info!("Detecting NAT type...");
-        
+
         // Simplified NAT detection
         // In a full implementation, this would use STUN to determine NAT type
         // For now, we assume most users are behind some form of NAT
-        
+
         let nat_type = self.probe_nat_type().await?;
-        
+
         tracing::info!(
             nat_type = ?nat_type,
             can_hole_punch = nat_type.can_hole_punch(),
             "NAT detection complete"
         );
-        
+
         Ok(nat_type)
     }
-    
+
     async fn probe_nat_type(&self) -> AgoraResult<NatType> {
         // This is a simplified implementation
         // A full implementation would:
         // 1. Send STUN requests to multiple servers
         // 2. Compare mapped addresses
         // 3. Determine NAT type based on RFC 3489
-        
+
         // For now, we'll return Unknown and let the connection logic figure it out
         Ok(NatType::Unknown)
     }
-    
+
     pub async fn get_observed_address(&mut self) -> AgoraResult<&ObservedAddr> {
         if self.observed_addr.is_none() {
             self.detect_nat_type().await?;
         }
         Ok(self.observed_addr.as_ref().unwrap())
     }
-    
+
     pub fn get_stun_servers(&self) -> &[String] {
         &self.config.servers
     }
@@ -167,8 +167,13 @@ impl HolePunchResult {
             latency_ms,
         }
     }
-    
-    pub fn hole_punched(local: SocketAddr, remote: SocketAddr, method: HolePunchMethod, latency_ms: u64) -> Self {
+
+    pub fn hole_punched(
+        local: SocketAddr,
+        remote: SocketAddr,
+        method: HolePunchMethod,
+        latency_ms: u64,
+    ) -> Self {
         Self {
             success: true,
             local_addr: local,
@@ -177,7 +182,7 @@ impl HolePunchResult {
             latency_ms,
         }
     }
-    
+
     pub fn failed() -> Self {
         Self {
             success: false,
@@ -195,20 +200,22 @@ pub async fn attempt_hole_punch(
     _timeout: Duration,
 ) -> AgoraResult<HolePunchResult> {
     let start = std::time::Instant::now();
-    
+
     tracing::debug!(
         local_addrs = ?local_addrs,
         remote_addrs = ?remote_addrs,
         "Attempting hole punch"
     );
-    
+
     // Try direct connections first
     for local in local_addrs {
         for remote in remote_addrs {
             if let Ok(Ok(_)) = tokio::time::timeout(
                 Duration::from_millis(500),
-                attempt_direct_connection(*local, *remote)
-            ).await {
+                attempt_direct_connection(*local, *remote),
+            )
+            .await
+            {
                 let latency = start.elapsed().as_millis() as u64;
                 tracing::info!(
                     local = ?local,
@@ -220,10 +227,10 @@ pub async fn attempt_hole_punch(
             }
         }
     }
-    
+
     // If direct fails, try hole punching (simplified)
     tracing::info!("Direct connection failed, hole punch required");
-    
+
     // For now, return failure - actual hole punch implementation would
     // coordinate with the remote peer via a signaling channel
     Ok(HolePunchResult::failed())
@@ -231,7 +238,7 @@ pub async fn attempt_hole_punch(
 
 async fn attempt_direct_connection(_local: SocketAddr, remote: SocketAddr) -> std::io::Result<()> {
     use tokio::net::TcpStream;
-    
+
     let stream = TcpStream::connect(remote).await?;
     let _ = stream.peer_addr()?;
     Ok(())
@@ -240,29 +247,29 @@ async fn attempt_direct_connection(_local: SocketAddr, remote: SocketAddr) -> st
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_nat_type_can_hole_punch() {
         assert!(NatType::Public.can_hole_punch());
         assert!(NatType::FullCone.can_hole_punch());
         assert!(!NatType::Symmetric.can_hole_punch());
     }
-    
+
     #[test]
     fn test_nat_type_description() {
         assert!(NatType::Public.description().contains("Public"));
         assert!(NatType::Symmetric.description().contains("TURN"));
     }
-    
+
     #[test]
     fn test_observed_addr_multiaddr() {
         let addr = SocketAddr::new("1.2.3.4".parse().unwrap(), 12345);
         let local = SocketAddr::new("192.168.1.1".parse().unwrap(), 54321);
         let observed = ObservedAddr::new(addr, local, NatType::FullCone);
-        
+
         assert_eq!(observed.to_multiaddr(), "/ip4/1.2.3.4/tcp/12345");
     }
-    
+
     #[test]
     fn test_stun_config_default() {
         let config = StunConfig::default();

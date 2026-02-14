@@ -1,9 +1,9 @@
-use std::sync::Arc;
-use std::sync::mpsc::{self, Sender, Receiver};
-use std::thread::{self, JoinHandle};
+use crate::error::{AgoraResult, Error};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{Device, SampleFormat, Stream, StreamConfig};
-use crate::error::{Error, AgoraResult};
+use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::Arc;
+use std::thread::{self, JoinHandle};
 
 pub const SAMPLE_RATE: u32 = 48000;
 pub const CHANNELS: u16 = 1;
@@ -54,23 +54,20 @@ pub struct AudioDevice {
 impl AudioDevice {
     pub fn input_devices() -> AgoraResult<Vec<AudioDeviceInfo>> {
         let host = cpal::default_host();
-        let default_input = host.default_input_device()
-            .and_then(|d| d.name().ok());
-        
+        let default_input = host.default_input_device().and_then(|d| d.name().ok());
+
         let mut devices = Vec::new();
-        
+
         if let Ok(input_devices) = host.input_devices() {
             for device in input_devices {
                 if let Ok(name) = device.name() {
-                    let is_default = default_input.as_ref()
-                        .map(|d| d == &name)
-                        .unwrap_or(false);
-                    
+                    let is_default = default_input.as_ref().map(|d| d == &name).unwrap_or(false);
+
                     let (channels, sample_rate) = device
                         .default_input_config()
                         .map(|c| (c.channels(), c.sample_rate().0))
                         .unwrap_or((1, 48000));
-                    
+
                     devices.push(AudioDeviceInfo {
                         name,
                         is_input: true,
@@ -81,29 +78,26 @@ impl AudioDevice {
                 }
             }
         }
-        
+
         Ok(devices)
     }
-    
+
     pub fn output_devices() -> AgoraResult<Vec<AudioDeviceInfo>> {
         let host = cpal::default_host();
-        let default_output = host.default_output_device()
-            .and_then(|d| d.name().ok());
-        
+        let default_output = host.default_output_device().and_then(|d| d.name().ok());
+
         let mut devices = Vec::new();
-        
+
         if let Ok(output_devices) = host.output_devices() {
             for device in output_devices {
                 if let Ok(name) = device.name() {
-                    let is_default = default_output.as_ref()
-                        .map(|d| d == &name)
-                        .unwrap_or(false);
-                    
+                    let is_default = default_output.as_ref().map(|d| d == &name).unwrap_or(false);
+
                     let (channels, sample_rate) = device
                         .default_output_config()
                         .map(|c| (c.channels(), c.sample_rate().0))
                         .unwrap_or((2, 48000));
-                    
+
                     devices.push(AudioDeviceInfo {
                         name,
                         is_input: false,
@@ -114,19 +108,21 @@ impl AudioDevice {
                 }
             }
         }
-        
+
         Ok(devices)
     }
-    
+
     pub fn default_input() -> AgoraResult<Self> {
         let host = cpal::default_host();
-        let device = host.default_input_device()
+        let device = host
+            .default_input_device()
             .ok_or_else(|| Error::Audio("No default input device".to_string()))?;
-        
+
         let name = device.name().unwrap_or_else(|_| "Unknown".to_string());
-        let config = device.default_input_config()
+        let config = device
+            .default_input_config()
             .map_err(|e| Error::Audio(format!("Failed to get input config: {}", e)))?;
-        
+
         Ok(Self {
             device,
             info: AudioDeviceInfo {
@@ -138,16 +134,18 @@ impl AudioDevice {
             },
         })
     }
-    
+
     pub fn default_output() -> AgoraResult<Self> {
         let host = cpal::default_host();
-        let device = host.default_output_device()
+        let device = host
+            .default_output_device()
             .ok_or_else(|| Error::Audio("No default output device".to_string()))?;
-        
+
         let name = device.name().unwrap_or_else(|_| "Unknown".to_string());
-        let config = device.default_output_config()
+        let config = device
+            .default_output_config()
             .map_err(|e| Error::Audio(format!("Failed to get output config: {}", e)))?;
-        
+
         Ok(Self {
             device,
             info: AudioDeviceInfo {
@@ -159,7 +157,7 @@ impl AudioDevice {
             },
         })
     }
-    
+
     pub fn info(&self) -> &AudioDeviceInfo {
         &self.info
     }
@@ -207,27 +205,28 @@ impl AudioBackend {
             output_buffer: Arc::new(std::sync::Mutex::new(Vec::new())),
         }
     }
-    
+
     fn start(&mut self, config: &AudioConfig) -> AgoraResult<()> {
         self.start_input_stream(config)?;
         self.start_output_stream()?;
         tracing::info!("Audio backend started");
         Ok(())
     }
-    
+
     fn start_input_stream(&mut self, config: &AudioConfig) -> AgoraResult<()> {
         let device = AudioDevice::default_input()?;
-        let supported_config = device.device
+        let supported_config = device
+            .device
             .default_input_config()
             .map_err(|e| Error::Audio(format!("Input config error: {}", e)))?;
-        
+
         let sample_format = supported_config.sample_format();
         let stream_config: StreamConfig = supported_config.into();
-        
+
         let buffer = self.input_buffer.clone();
         let noise_gate = 0.01;
         let enable_noise_suppression = config.enable_noise_suppression;
-        
+
         let stream = match sample_format {
             SampleFormat::F32 => device.device.build_input_stream(
                 &stream_config,
@@ -241,7 +240,7 @@ impl AudioBackend {
                         };
                         buf.push(processed);
                     }
-                    
+
                     if buf.len() > FRAME_SIZE * 10 {
                         buf.drain(0..FRAME_SIZE);
                     }
@@ -267,26 +266,30 @@ impl AudioBackend {
                 None,
             ),
             _ => return Err(Error::Audio("Unsupported sample format".to_string())),
-        }.map_err(|e| Error::Audio(format!("Failed to build input stream: {}", e)))?;
-        
-        stream.play().map_err(|e| Error::Audio(format!("Failed to play input stream: {}", e)))?;
+        }
+        .map_err(|e| Error::Audio(format!("Failed to build input stream: {}", e)))?;
+
+        stream
+            .play()
+            .map_err(|e| Error::Audio(format!("Failed to play input stream: {}", e)))?;
         self.input_stream = Some(stream);
-        
+
         tracing::info!("Input stream started on device: {}", device.info.name);
         Ok(())
     }
-    
+
     fn start_output_stream(&mut self) -> AgoraResult<()> {
         let device = AudioDevice::default_output()?;
-        let supported_config = device.device
+        let supported_config = device
+            .device
             .default_output_config()
             .map_err(|e| Error::Audio(format!("Output config error: {}", e)))?;
-        
+
         let sample_format = supported_config.sample_format();
         let stream_config: StreamConfig = supported_config.into();
-        
+
         let buffer = self.output_buffer.clone();
-        
+
         let stream = match sample_format {
             SampleFormat::F32 => device.device.build_output_stream(
                 &stream_config,
@@ -319,15 +322,18 @@ impl AudioBackend {
                 None,
             ),
             _ => return Err(Error::Audio("Unsupported sample format".to_string())),
-        }.map_err(|e| Error::Audio(format!("Failed to build output stream: {}", e)))?;
-        
-        stream.play().map_err(|e| Error::Audio(format!("Failed to play output stream: {}", e)))?;
+        }
+        .map_err(|e| Error::Audio(format!("Failed to build output stream: {}", e)))?;
+
+        stream
+            .play()
+            .map_err(|e| Error::Audio(format!("Failed to play output stream: {}", e)))?;
         self.output_stream = Some(stream);
-        
+
         tracing::info!("Output stream started on device: {}", device.info.name);
         Ok(())
     }
-    
+
     fn stop(&mut self) {
         self.input_stream = None;
         self.output_stream = None;
@@ -359,27 +365,27 @@ impl AudioPipeline {
             _thread_handle: None,
         }
     }
-    
+
     pub fn start(&mut self) -> AgoraResult<()> {
         if self.is_running {
             return Ok(());
         }
-        
+
         let config = self.config.clone();
         let input_buffer = self.input_buffer.clone();
         let output_buffer = self.output_buffer.clone();
         let (tx, rx): (Sender<AudioCommand>, Receiver<AudioCommand>) = mpsc::channel();
-        
+
         let handle = thread::spawn(move || {
             let mut backend = AudioBackend::new();
             backend.input_buffer = input_buffer;
             backend.output_buffer = output_buffer;
-            
+
             if let Err(e) = backend.start(&config) {
                 tracing::error!("Failed to start audio backend: {}", e);
                 return;
             }
-            
+
             loop {
                 match rx.try_recv() {
                     Ok(AudioCommand::Stop) | Err(mpsc::TryRecvError::Disconnected) => {
@@ -395,15 +401,15 @@ impl AudioPipeline {
                 }
             }
         });
-        
+
         self.command_tx = Some(tx);
         self._thread_handle = Some(handle);
         self.is_running = true;
-        
+
         tracing::info!("Audio pipeline started");
         Ok(())
     }
-    
+
     pub fn stop(&mut self) {
         if let Some(tx) = self.command_tx.take() {
             let _ = tx.send(AudioCommand::Stop);
@@ -411,10 +417,10 @@ impl AudioPipeline {
         self.is_running = false;
         tracing::info!("Audio pipeline stopped");
     }
-    
+
     pub fn capture_frame(&mut self) -> Option<AudioFrame> {
         let mut buffer = self.input_buffer.lock().unwrap();
-        
+
         if buffer.len() >= self.config.frame_size {
             let frame: Vec<f32> = buffer.drain(0..self.config.frame_size).collect();
             self.stats.frames_processed += 1;
@@ -423,20 +429,20 @@ impl AudioPipeline {
             None
         }
     }
-    
+
     pub fn play_frame(&mut self, frame: AudioFrame) {
         let mut buffer = self.output_buffer.lock().unwrap();
         buffer.extend(frame);
     }
-    
+
     pub fn get_stats(&self) -> &AudioStats {
         &self.stats
     }
-    
+
     pub fn is_running(&self) -> bool {
         self.is_running
     }
-    
+
     pub fn set_noise_gate_threshold(&mut self, threshold: f32) {
         self.noise_gate_threshold = threshold;
         if let Some(tx) = &self.command_tx {
@@ -458,7 +464,7 @@ pub fn calculate_rms(samples: &[f32]) -> f32 {
     if samples.is_empty() {
         return 0.0;
     }
-    
+
     let sum: f32 = samples.iter().map(|s| s * s).sum();
     (sum / samples.len() as f32).sqrt()
 }
@@ -474,11 +480,12 @@ pub fn normalize_audio(samples: &mut [f32], target_peak: f32) {
     if samples.is_empty() {
         return;
     }
-    
-    let max = samples.iter()
+
+    let max = samples
+        .iter()
         .map(|s| s.abs())
         .fold(0.0f32, |a, b| a.max(b));
-    
+
     if max > 0.0 {
         let scale = target_peak / max;
         for sample in samples.iter_mut() {
@@ -491,10 +498,10 @@ pub fn mix_audio(inputs: &[&[f32]], weights: &[f32]) -> Vec<f32> {
     if inputs.is_empty() {
         return Vec::new();
     }
-    
+
     let len = inputs[0].len();
     let mut output = vec![0.0f32; len];
-    
+
     for (input, &weight) in inputs.iter().zip(weights.iter()) {
         for (i, &sample) in input.iter().enumerate() {
             if i < len {
@@ -502,11 +509,11 @@ pub fn mix_audio(inputs: &[&[f32]], weights: &[f32]) -> Vec<f32> {
             }
         }
     }
-    
+
     for sample in output.iter_mut() {
         *sample = sample.clamp(-1.0, 1.0);
     }
-    
+
     output
 }
 
@@ -514,23 +521,23 @@ pub fn resample_nearest(samples: &[f32], from_rate: u32, to_rate: u32) -> Vec<f3
     if from_rate == to_rate || samples.is_empty() {
         return samples.to_vec();
     }
-    
+
     let ratio = to_rate as f64 / from_rate as f64;
     let new_len = (samples.len() as f64 * ratio) as usize;
     let mut output = Vec::with_capacity(new_len);
-    
+
     for i in 0..new_len {
         let src_idx = (i as f64 / ratio) as usize;
         output.push(samples[src_idx.min(samples.len() - 1)]);
     }
-    
+
     output
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_audio_config_default() {
         let config = AudioConfig::default();
@@ -538,53 +545,56 @@ mod tests {
         assert_eq!(config.channels, CHANNELS);
         assert_eq!(config.frame_size, FRAME_SIZE);
     }
-    
+
     #[test]
     fn test_calculate_rms() {
         let silence = vec![0.0; 100];
         assert_eq!(calculate_rms(&silence), 0.0);
-        
+
         let max_signal = vec![1.0; 100];
         assert!((calculate_rms(&max_signal) - 1.0).abs() < 0.001);
     }
-    
+
     #[test]
     fn test_calculate_db() {
         assert_eq!(calculate_db(0.0), -100.0);
         assert!((calculate_db(1.0) - 0.0).abs() < 0.001);
     }
-    
+
     #[test]
     fn test_normalize_audio() {
         let mut samples = vec![0.5, -0.5, 0.25];
         normalize_audio(&mut samples, 1.0);
-        
-        let max = samples.iter().map(|s| s.abs()).fold(0.0f32, |a, b| a.max(b));
+
+        let max = samples
+            .iter()
+            .map(|s| s.abs())
+            .fold(0.0f32, |a, b| a.max(b));
         assert!((max - 1.0).abs() < 0.001);
     }
-    
+
     #[test]
     fn test_mix_audio() {
         let input1 = vec![1.0, 1.0, 1.0];
         let input2 = vec![1.0, 1.0, 1.0];
-        
+
         let mixed = mix_audio(&[&input1, &input2], &[0.5, 0.5]);
-        
+
         assert_eq!(mixed.len(), 3);
         assert!((mixed[0] - 1.0).abs() < 0.001);
     }
-    
+
     #[test]
     fn test_noise_gate() {
         assert_eq!(apply_noise_gate(0.001, 0.01), 0.0);
         assert!(apply_noise_gate(0.5, 0.01).abs() > 0.0);
     }
-    
+
     #[test]
     fn test_resample_nearest() {
         let samples = vec![1.0, 2.0, 3.0, 4.0];
         let resampled = resample_nearest(&samples, 48000, 24000);
-        
+
         assert!(resampled.len() < samples.len());
     }
 }

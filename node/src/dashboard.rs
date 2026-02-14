@@ -125,17 +125,17 @@ struct DiscoverQuery {
     capability: Option<String>,
 }
 
-async fn api_discover(
-    Query(query): Query<DiscoverQuery>,
-) -> Json<Vec<NodeAdvertisement>> {
-    let _capability = query.capability.as_ref()
+async fn api_discover(Query(query): Query<DiscoverQuery>) -> Json<Vec<NodeAdvertisement>> {
+    let _capability = query
+        .capability
+        .as_ref()
         .map(|c| match c.to_lowercase().as_str() {
             "mixer" => NodeCapability::Mixer,
             "relay" => NodeCapability::Relay,
             "bootstrap" => NodeCapability::Bootstrap,
             _ => NodeCapability::Mixer,
         });
-    
+
     Json(vec![])
 }
 
@@ -145,7 +145,10 @@ async fn health() -> impl IntoResponse {
 
 async fn metrics() -> impl IntoResponse {
     let metrics = NodeMetrics::gather();
-    ([(header::CONTENT_TYPE, "text/plain; charset=utf-8")], metrics)
+    (
+        [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+        metrics,
+    )
 }
 
 fn render_html(data: &DashboardData) -> String {
@@ -280,7 +283,11 @@ fn render_html(data: &DashboardData) -> String {
         version = data.version,
         uptime = format_uptime(data.status.uptime_seconds),
         listen_addr = data.listen_addr,
-        peer_id = if data.peer_id.is_empty() { "Not connected".to_string() } else { data.peer_id.clone() },
+        peer_id = if data.peer_id.is_empty() {
+            "Not connected".to_string()
+        } else {
+            data.peer_id.clone()
+        },
         connections_total = data.status.connections.total,
         connections_in = data.status.connections.incoming,
         connections_out = data.status.connections.outgoing,
@@ -296,7 +303,7 @@ fn format_uptime(seconds: u64) -> String {
     let days = seconds / 86400;
     let hours = (seconds % 86400) / 3600;
     let mins = (seconds % 3600) / 60;
-    
+
     if days > 0 {
         format!("{}d {}h {}m", days, hours, mins)
     } else if hours > 0 {
@@ -320,7 +327,7 @@ fn format_bytes(bytes: u64) -> String {
     const KB: u64 = 1024;
     const MB: u64 = KB * 1024;
     const GB: u64 = MB * 1024;
-    
+
     if bytes >= GB {
         format!("{:.1} GB", bytes as f64 / GB as f64)
     } else if bytes >= MB {

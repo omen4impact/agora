@@ -71,7 +71,11 @@ impl TcpHolePuncher {
             .await?;
 
         for attempt in 0..self.config.retry_count {
-            tracing::info!("TCP hole punch attempt {} of {}", attempt + 1, self.config.retry_count);
+            tracing::info!(
+                "TCP hole punch attempt {} of {}",
+                attempt + 1,
+                self.config.retry_count
+            );
 
             match self.attempt_simultaneous_open(&peer_endpoints).await {
                 Ok(stream) => {
@@ -98,9 +102,9 @@ impl TcpHolePuncher {
 
         match self.attempt_sequential(&peer_endpoints).await {
             Ok(stream) => {
-                let addr = stream.peer_addr().map_err(|e| {
-                    Error::Network(format!("Failed to get peer address: {}", e))
-                })?;
+                let addr = stream
+                    .peer_addr()
+                    .map_err(|e| Error::Network(format!("Failed to get peer address: {}", e)))?;
                 tracing::info!("Sequential connection successful via {}", addr);
                 Ok(TcpHolePunchResult {
                     success: true,
@@ -121,7 +125,10 @@ impl TcpHolePuncher {
         }
     }
 
-    pub async fn attempt_simultaneous_open(&self, peer_endpoints: &[SocketAddr]) -> Result<TokioTcpStream> {
+    pub async fn attempt_simultaneous_open(
+        &self,
+        peer_endpoints: &[SocketAddr],
+    ) -> Result<TokioTcpStream> {
         if peer_endpoints.is_empty() {
             return Err(Error::Network("No peer endpoints provided".to_string()));
         }
@@ -129,7 +136,9 @@ impl TcpHolePuncher {
         let local_addr: SocketAddr = if self.config.local_port == 0 {
             "0.0.0.0:0".parse().unwrap()
         } else {
-            format!("0.0.0.0:{}", self.config.local_port).parse().unwrap()
+            format!("0.0.0.0:{}", self.config.local_port)
+                .parse()
+                .unwrap()
         };
 
         let mut join_set = tokio::task::JoinSet::new();
@@ -139,9 +148,8 @@ impl TcpHolePuncher {
             let peer = *peer_addr;
             let timeout_dur = self.config.timeout;
 
-            join_set.spawn(async move {
-                Self::bind_and_connect_async(local, peer, timeout_dur).await
-            });
+            join_set
+                .spawn(async move { Self::bind_and_connect_async(local, peer, timeout_dur).await });
         }
 
         while let Some(result) = join_set.join_next().await {
@@ -150,7 +158,9 @@ impl TcpHolePuncher {
             }
         }
 
-        Err(Error::Network("Simultaneous open failed for all endpoints".to_string()))
+        Err(Error::Network(
+            "Simultaneous open failed for all endpoints".to_string(),
+        ))
     }
 
     async fn bind_and_connect_async(
@@ -184,7 +194,10 @@ impl TcpHolePuncher {
             Ok(()) => {}
             Err(e) if e.raw_os_error() == Some(libc::EINPROGRESS) => {}
             Err(e) => {
-                return Err(Error::Network(format!("Connection to {} failed: {}", remote, e)));
+                return Err(Error::Network(format!(
+                    "Connection to {} failed: {}",
+                    remote, e
+                )));
             }
         }
 
@@ -200,17 +213,26 @@ impl TcpHolePuncher {
                     Ok(_) => {}
                     Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
                     Err(e) => {
-                        return Err(Error::Network(format!("Connection to {} failed: {}", remote, e)));
+                        return Err(Error::Network(format!(
+                            "Connection to {} failed: {}",
+                            remote, e
+                        )));
                     }
                 }
-                let local_addr = tokio_stream.local_addr().map_err(|e| {
-                    Error::Network(format!("Failed to get local address: {}", e))
-                })?;
+                let local_addr = tokio_stream
+                    .local_addr()
+                    .map_err(|e| Error::Network(format!("Failed to get local address: {}", e)))?;
                 tracing::debug!("Connected from {} to {}", local_addr, remote);
                 Ok(tokio_stream)
             }
-            Ok(Err(e)) => Err(Error::Network(format!("Connection to {} failed: {}", remote, e))),
-            Err(_) => Err(Error::Network(format!("Connection to {} timed out", remote))),
+            Ok(Err(e)) => Err(Error::Network(format!(
+                "Connection to {} failed: {}",
+                remote, e
+            ))),
+            Err(_) => Err(Error::Network(format!(
+                "Connection to {} timed out",
+                remote
+            ))),
         }
     }
 
@@ -219,7 +241,9 @@ impl TcpHolePuncher {
             let local: SocketAddr = if self.config.local_port == 0 {
                 "0.0.0.0:0".parse().unwrap()
             } else {
-                format!("0.0.0.0:{}", self.config.local_port).parse().unwrap()
+                format!("0.0.0.0:{}", self.config.local_port)
+                    .parse()
+                    .unwrap()
             };
 
             match Self::bind_and_connect_async(local, *peer_addr, self.config.timeout).await {
@@ -231,14 +255,20 @@ impl TcpHolePuncher {
             }
         }
 
-        Err(Error::Network("All sequential connection attempts failed".to_string()))
+        Err(Error::Network(
+            "All sequential connection attempts failed".to_string(),
+        ))
     }
 
     fn get_local_endpoints(&self) -> Result<Vec<SocketAddr>> {
         let mut endpoints = Vec::new();
 
         if self.config.local_port != 0 {
-            endpoints.push(format!("0.0.0.0:{}", self.config.local_port).parse().unwrap());
+            endpoints.push(
+                format!("0.0.0.0:{}", self.config.local_port)
+                    .parse()
+                    .unwrap(),
+            );
         }
 
         for iface in get_local_addresses() {
@@ -330,7 +360,10 @@ mod tests {
 
     #[test]
     fn test_punch_method_equality() {
-        assert_eq!(TcpPunchMethod::SimultaneousOpen, TcpPunchMethod::SimultaneousOpen);
+        assert_eq!(
+            TcpPunchMethod::SimultaneousOpen,
+            TcpPunchMethod::SimultaneousOpen
+        );
         assert_ne!(TcpPunchMethod::SimultaneousOpen, TcpPunchMethod::Sequential);
     }
 
@@ -435,9 +468,9 @@ mod tests {
     async fn test_signaling_send_ready() {
         let signaling = MockSignalingChannel::new(vec![]);
         let endpoints: Vec<SocketAddr> = vec!["127.0.0.1:8080".parse().unwrap()];
-        
+
         signaling.send_ready(&endpoints).await.unwrap();
-        
+
         let ready = *signaling.ready_sent.lock().await;
         assert!(ready);
     }
@@ -446,9 +479,12 @@ mod tests {
     async fn test_signaling_wait_for_peer() {
         let peer_endpoints: Vec<SocketAddr> = vec!["127.0.0.1:9090".parse().unwrap()];
         let signaling = MockSignalingChannel::new(peer_endpoints.clone());
-        
-        let result = signaling.wait_for_peer_ready(Duration::from_secs(1)).await.unwrap();
-        
+
+        let result = signaling
+            .wait_for_peer_ready(Duration::from_secs(1))
+            .await
+            .unwrap();
+
         assert_eq!(result.len(), 1);
         assert_eq!(result[0], peer_endpoints[0]);
     }
@@ -461,7 +497,7 @@ mod tests {
             latency_ms: 50,
             method: TcpPunchMethod::SimultaneousOpen,
         };
-        
+
         let debug_str = format!("{:?}", result);
         assert!(debug_str.contains("success: true"));
     }
