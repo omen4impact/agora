@@ -455,6 +455,7 @@ async fn test_multiple_room_participants() {
     }
 }
 
+#[allow(clippy::field_reassign_with_default)]
 #[tokio::test]
 async fn test_mixer_rotation() {
     let mut config = MixerConfig::default();

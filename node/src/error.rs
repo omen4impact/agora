@@ -21,4 +21,5 @@ pub enum NodeError {
     Dashboard(String),
 }
 
+#[allow(dead_code)]
 pub type NodeResult<T> = Result<T, NodeError>;

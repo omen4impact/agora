@@ -120,6 +120,7 @@ async fn api_peers(State(_state): State<DashboardState>) -> Json<Vec<String>> {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct DiscoverQuery {
     region: Option<String>,
     capability: Option<String>,

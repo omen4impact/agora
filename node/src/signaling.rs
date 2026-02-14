@@ -130,6 +130,7 @@ impl Default for SignalingState {
     }
 }
 
+#[allow(dead_code)]
 pub fn signaling_router() -> Router<Arc<SignalingState>> {
     Router::new()
         .route("/ws", get(websocket_handler))

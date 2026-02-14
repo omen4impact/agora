@@ -63,6 +63,7 @@ pub struct NodeMetrics {
     start_time: Instant,
 }
 
+#[allow(dead_code)]
 impl NodeMetrics {
     pub fn new() -> Self {
         Self {
@@ -74,38 +75,46 @@ impl NodeMetrics {
         NODE_UPTIME_SECONDS.set(self.start_time.elapsed().as_secs_f64());
     }
 
+    #[allow(dead_code)]
     pub fn set_connections(&self, total: i64, incoming: i64, outgoing: i64) {
         CONNECTIONS_TOTAL.set(total);
         CONNECTIONS_INCOMING.set(incoming);
         CONNECTIONS_OUTGOING.set(outgoing);
     }
 
+    #[allow(dead_code)]
     pub fn set_rooms(&self, count: i64) {
         ROOMS_ACTIVE.set(count);
     }
 
+    #[allow(dead_code)]
     pub fn set_participants(&self, count: i64) {
         PARTICIPANTS_TOTAL.set(count);
     }
 
+    #[allow(dead_code)]
     pub fn inc_audio_packets_in(&self, bytes: usize) {
         AUDIO_PACKETS_IN.inc();
         AUDIO_BYTES_IN.inc_by(bytes as f64);
     }
 
+    #[allow(dead_code)]
     pub fn inc_audio_packets_out(&self, bytes: usize) {
         AUDIO_PACKETS_OUT.inc();
         AUDIO_BYTES_OUT.inc_by(bytes as f64);
     }
 
+    #[allow(dead_code)]
     pub fn set_dht_peers(&self, count: i64) {
         DHT_PEERS.set(count);
     }
 
+    #[allow(dead_code)]
     pub fn set_nat_type(&self, nat_type: u8) {
         NAT_TYPE.set(nat_type as f64);
     }
 
+    #[allow(dead_code)]
     pub fn set_mixer_role(&self, role: u8) {
         MIXER_ROLE.set(role as f64);
     }

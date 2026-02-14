@@ -169,6 +169,7 @@ impl DiscoveredNode {
         self.discovered_at.elapsed()
     }
 
+    #[allow(dead_code)]
     pub fn is_fresh(&self) -> bool {
         self.age() < Duration::from_secs(300)
     }
@@ -285,6 +286,7 @@ impl Default for NodeDiscovery {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct DiscoveryConfig {
     pub advertise_interval: Duration,
     pub refresh_interval: Duration,

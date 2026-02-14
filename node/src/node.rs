@@ -337,6 +337,7 @@ pub async fn discover(
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
+#[allow(dead_code)]
 pub struct DiscoveryResponse {
     pub nodes: Vec<NodeAdvertisement>,
 }

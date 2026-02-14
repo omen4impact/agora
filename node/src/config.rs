@@ -293,6 +293,7 @@ impl NodeConfig {
         SocketAddr::new(self.dashboard.listen_addr, self.dashboard.port)
     }
 
+    #[allow(dead_code)]
     pub fn metrics_socket(&self) -> SocketAddr {
         SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), self.metrics.port)
     }
