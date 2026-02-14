@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0-beta.1] - 2026-02-14
+
+### First Beta Release! 🎉
+
+This is the first beta release of Agora, a decentralized P2P voice chat application.
+
+#### Features
+- **P2P Networking**: libp2p-based peer discovery and communication
+- **E2E Encryption**: ChaCha20-Poly1305 + X25519 + Noise_XX handshake
+- **NAT Traversal**: STUN, ICE, TURN, UPnP, TCP hole-punching
+- **Audio**: Opus codec, RNNoise denoising, Acoustic Echo Cancellation
+- **Reputation**: Proof-of-Bandwidth challenges, Web-of-Trust vouching
+- **Multi-Platform**: Desktop (Tauri), Mobile (Flutter), Headless Node
+
+#### Security
+- **bincode → postcard Migration**: Replaced unmaintained bincode
+- **Password Hashing**: HKDF + random salt
+- **FFI Safety**: No panics in FFI functions
+
+#### Test Coverage
+- 243 Rust tests (unit + integration + E2E)
+- 16 Flutter tests
+
+---
+
 ## [0.2.9] - 2026-02-14
 
 ### Security
@@ -153,13 +178,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Desktop app scaffold (Tauri)
 - Mobile app scaffold (Flutter)
 
-[0.2.9]: https://github.com/your-org/agora/compare/v0.2.8...v0.2.9
-[0.2.8]: https://github.com/your-org/agora/compare/v0.2.7...v0.2.8
-[0.2.7]: https://github.com/your-org/agora/compare/v0.2.6...v0.2.7
-[0.2.6]: https://github.com/your-org/agora/compare/v0.2.5...v0.2.6
-[0.2.5]: https://github.com/your-org/agora/compare/v0.2.4...v0.2.5
-[0.2.4]: https://github.com/your-org/agora/compare/v0.2.3...v0.2.4
-[0.2.3]: https://github.com/your-org/agora/compare/v0.2.2...v0.2.3
-[0.2.2]: https://github.com/your-org/agora/compare/v0.2.1...v0.2.2
-[0.2.1]: https://github.com/your-org/agora/compare/v0.1.0...v0.2.1
-[0.1.0]: https://github.com/your-org/agora/releases/tag/v0.1.0
+[0.3.0-beta.1]: https://github.com/omen4impact/agora/releases/tag/v0.3.0-beta.1
+[0.2.9]: https://github.com/omen4impact/agora/compare/v0.2.8...v0.2.9
+[0.2.8]: https://github.com/omen4impact/agora/compare/v0.2.7...v0.2.8
+[0.2.7]: https://github.com/omen4impact/agora/compare/v0.2.6...v0.2.7
+[0.2.6]: https://github.com/omen4impact/agora/compare/v0.2.5...v0.2.6
+[0.2.5]: https://github.com/omen4impact/agora/compare/v0.2.4...v0.2.5
+[0.2.4]: https://github.com/omen4impact/agora/compare/v0.2.3...v0.2.4
+[0.2.3]: https://github.com/omen4impact/agora/compare/v0.2.2...v0.2.3
+[0.2.2]: https://github.com/omen4impact/agora/compare/v0.2.1...v0.2.2
+[0.2.1]: https://github.com/omen4impact/agora/compare/v0.1.0...v0.2.1
+[0.1.0]: https://github.com/omen4impact/agora/releases/tag/v0.1.0
