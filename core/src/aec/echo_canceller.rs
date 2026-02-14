@@ -498,8 +498,8 @@ mod tests {
     fn test_stats_update() {
         let mut aec = AcousticEchoCanceller::new(48000);
 
-        let far = vec![0.5; 500];
-        let near = vec![0.3; 160];
+        let far = vec![0.5; 2000];
+        let near = vec![0.3; 960];
 
         aec.process_frame(&far, &near);
 
