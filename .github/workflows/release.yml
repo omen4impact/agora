@@ -54,31 +54,29 @@ jobs:
           echo "PKG_CONFIG_PATH=$(brew --prefix opus)/lib/pkgconfig" >> $GITHUB_ENV
 
       - name: Build
-        run: cargo build --release --target ${{ matrix.target }}
+        run: cargo build --release --target ${{ matrix.target }} -p agora-cli -p agora-node
 
       - name: Prepare artifacts (Unix)
         if: matrix.os != 'windows-latest'
         run: |
           mkdir -p dist
-          cp target/${{ matrix.target }}/release/agora-core dist/${{ matrix.artifact }}
-          cp target/${{ matrix.target }}/release/agora-node dist/${{ matrix.artifact }}-node || true
-          cp target/${{ matrix.target }}/release/agora-cli dist/${{ matrix.artifact }}-cli || true
-          cd dist && tar -czvf ${{ matrix.artifact }}.tar.gz *
+          cp target/${{ matrix.target }}/release/agora-cli dist/agora-cli-${{ matrix.target }}
+          cp target/${{ matrix.target }}/release/agora-node dist/agora-node-${{ matrix.target }}
+          cd dist && tar -czvf agora-${{ matrix.target }}.tar.gz *
 
       - name: Prepare artifacts (Windows)
         if: matrix.os == 'windows-latest'
         run: |
           mkdir dist
-          cp target/${{ matrix.target }}/release/agora-core.exe dist/${{ matrix.artifact }}.exe
-          cp target/${{ matrix.target }}/release/agora-node.exe dist/${{ matrix.artifact }}-node.exe || true
-          cp target/${{ matrix.target }}/release/agora-cli.exe dist/${{ matrix.artifact }}-cli.exe || true
-          cd dist && 7z a ${{ matrix.artifact }}.zip *
+          cp target/${{ matrix.target }}/release/agora-cli.exe dist/agora-cli-${{ matrix.target }}.exe
+          cp target/${{ matrix.target }}/release/agora-node.exe dist/agora-node-${{ matrix.target }}.exe
+          cd dist && 7z a agora-${{ matrix.target }}.zip *
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
-          path: dist/${{ matrix.artifact }}.*
+          name: agora-${{ matrix.target }}
+          path: dist/agora-${{ matrix.target }}.*
 
   build-mobile:
     name: Build Mobile
@@ -89,7 +87,7 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.19.0'
+          flutter-version: '3.24.0'
 
       - name: Build Android APK
         working-directory: mobile
