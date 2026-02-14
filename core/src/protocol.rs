@@ -33,11 +33,11 @@ impl AudioPacket {
     }
 
     pub fn encode(&self) -> io::Result<Vec<u8>> {
-        bincode::serialize(self).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+        postcard::to_allocvec(self).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
     }
 
     pub fn decode(data: &[u8]) -> io::Result<Self> {
-        bincode::deserialize(data).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+        postcard::from_bytes(data).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
     }
 }
 
@@ -96,11 +96,11 @@ impl EncryptedAudioPacket {
     }
 
     pub fn encode(&self) -> io::Result<Vec<u8>> {
-        bincode::serialize(self).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+        postcard::to_allocvec(self).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
     }
 
     pub fn decode(data: &[u8]) -> io::Result<Self> {
-        bincode::deserialize(data).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+        postcard::from_bytes(data).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
     }
 }
 
@@ -160,11 +160,11 @@ impl ControlMessage {
     }
 
     pub fn encode(&self) -> io::Result<Vec<u8>> {
-        bincode::serialize(self).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+        postcard::to_allocvec(self).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
     }
 
     pub fn decode(data: &[u8]) -> io::Result<Self> {
-        bincode::deserialize(data).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+        postcard::from_bytes(data).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
     }
 }
 

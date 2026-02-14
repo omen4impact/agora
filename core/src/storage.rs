@@ -54,7 +54,7 @@ impl IdentityStorage {
             display_name: identity.display_name().map(|s| s.to_string()),
         };
 
-        let bytes = bincode::serialize(&stored)
+        let bytes = postcard::to_allocvec(&stored)
             .map_err(|e| Error::Storage(format!("Failed to serialize identity: {}", e)))?;
 
         std::fs::write(&path, &bytes)
@@ -73,7 +73,7 @@ impl IdentityStorage {
         let bytes = std::fs::read(&path)
             .map_err(|e| Error::Storage(format!("Failed to read identity: {}", e)))?;
 
-        let stored: StoredIdentity = bincode::deserialize(&bytes)
+        let stored: StoredIdentity = postcard::from_bytes(&bytes)
             .map_err(|e| Error::Storage(format!("Failed to deserialize identity: {}", e)))?;
 
         let mut identity = Identity::from_bytes(&stored.key_bytes)?;

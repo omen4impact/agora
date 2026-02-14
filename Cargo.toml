@@ -45,7 +45,7 @@ hex = "0.4"
 cpal = "0.15"
 rubato = "0.15"
 hound = "3.5"
-bincode = "1"
+postcard = { version = "1", features = ["alloc"] }
 bytes = "1"
 futures = "0.3"
 async-trait = "0.1"
