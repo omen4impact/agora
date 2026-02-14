@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.9] - 2026-02-14
+
+### Security
+- **bincode → postcard Migration**: Replaced unmaintained bincode with postcard
+  - Resolves RUSTSEC-2025-0141 (bincode is unmaintained)
+  - postcard is actively maintained and no_std compatible
+  - Smaller serialized size for wire protocol
+  - Updated: `storage.rs`, `protocol.rs`
+
+- **Password Hashing**: Improved password security with HKDF + random salt
+  - Replaced static SHA-256 with HKDF-based key derivation
+  - Each password hash now has a unique salt
+  - Protects against rainbow table attacks
+
+- **FFI Safety**: Improved FFI error handling
+  - Removed panics from FFI functions
+  - Added proper error string returns
+  - Documented safety requirements
+
+### Changed
+- Updated CI to document ignored security advisories (transitive dependencies)
+- Fixed all clippy warnings across workspace
+- Added `#[allow(dead_code)]` for intentional public API functions
+
 ## [0.2.8] - 2026-02-14
 
 ### Added
@@ -129,6 +153,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Desktop app scaffold (Tauri)
 - Mobile app scaffold (Flutter)
 
+[0.2.9]: https://github.com/your-org/agora/compare/v0.2.8...v0.2.9
 [0.2.8]: https://github.com/your-org/agora/compare/v0.2.7...v0.2.8
 [0.2.7]: https://github.com/your-org/agora/compare/v0.2.6...v0.2.7
 [0.2.6]: https://github.com/your-org/agora/compare/v0.2.5...v0.2.6

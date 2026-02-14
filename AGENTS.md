@@ -15,6 +15,12 @@ Agora is a decentralized P2P voice chat application. This file provides context 
 - **Rust**: 243 tests passing (202 unit + 24 integration + 17 E2E + 14 node)
 - **Flutter**: 16 tests passing
 
+### Security Audit (2026-02-14)
+- ✅ Migrated from unmaintained `bincode` to `postcard`
+- ✅ Password hashing with HKDF + random salt
+- ✅ FFI error handling (no panics)
+- ⚠️ Transitive dependency advisories documented in CI (Tauri/GTK, libp2p)
+
 ### Cycle 2.8 Progress:
 - ✅ README.md Overhaul
 - ✅ ARCHITECTURE.md Documentation
@@ -98,8 +104,9 @@ See:
 | Core Library | Rust, libp2p | P2P networking, identity, crypto |
 | Desktop App | Tauri v2, HTML/CSS/JS | Native desktop client |
 | Mobile App | Flutter, Dart | iOS/Android client |
-| Audio | cpal, Opus (planned), RNNoise (planned) | Low-latency audio processing |
+| Audio | cpal, Opus, RNNoise | Low-latency audio processing |
 | Crypto | Ed25519, Noise Protocol, ChaCha20-Poly1305, X25519 | Identity & E2E encryption |
+| Serialization | postcard, serde_json | Wire protocol & config |
 
 ## Project Structure
 
@@ -260,6 +267,7 @@ GET /metrics       # Prometheus Metrics
 - `snow` - Noise protocol framework
 - `hkdf` - Key derivation
 - `base64` - Encoding
+- `postcard` - No_std compatible serialization (replaces unmaintained bincode)
 
 ## Development Workflow
 
@@ -434,6 +442,8 @@ pub fn do_something() -> Result<String> {
 
 ### Future Work
 - [x] Echo Cancellation (WebRTC AEC) ✅
+- [x] Security: bincode → postcard migration ✅
+- [x] Security: Password hashing with salt ✅
 - [ ] Beta Release
 - [ ] Community Building
 
