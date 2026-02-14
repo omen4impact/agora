@@ -1,6 +1,6 @@
 use agora_core::codec::{OpusConfig, OpusDecoder, OpusEncoder, OpusMode, OPUS_FRAME_SIZE};
-use agora_core::denoise::{RnnoiseDenoiser, RNNOISE_FRAME_SIZE};
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use agora_core::denoise::RnnoiseDenoiser;
+use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
 
 fn generate_audio_frame(samples: usize) -> Vec<f32> {
     (0..samples)

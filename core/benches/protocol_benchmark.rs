@@ -1,4 +1,4 @@
-use agora_core::protocol::{AudioPacket, ControlMessage, ControlMessageType, JitterBuffer};
+use agora_core::protocol::{AudioPacket, ControlMessage, JitterBuffer};
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 
 fn generate_audio_frame(samples: usize) -> Vec<f32> {

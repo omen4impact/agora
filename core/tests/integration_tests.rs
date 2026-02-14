@@ -529,11 +529,9 @@ async fn test_participant_role_changes() {
 
     if let Some(mixer_id) = current_mixer {
         if mixer_id == "local" {
-            assert_eq!(manager.is_mixer(), true);
-        } else {
-            if let Some(participant) = manager.get_participant_info(mixer_id) {
-                assert_eq!(participant.role, MixerRole::Mixer);
-            }
+            assert!(manager.is_mixer());
+        } else if let Some(participant) = manager.get_participant_info(mixer_id) {
+            assert_eq!(participant.role, MixerRole::Mixer);
         }
     }
 
@@ -659,7 +657,7 @@ mod stress_tests {
 
     #[tokio::test]
     async fn test_stress_control_messages() {
-        let message_types = vec![
+        let message_types = [
             ControlMessageType::JoinRoom {
                 room_id: "room1".to_string(),
             },

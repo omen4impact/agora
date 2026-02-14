@@ -1,7 +1,6 @@
 use libp2p::PeerId;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::net::IpAddr;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const DHT_KEY_PREFIX: &str = "/agora/nodes";

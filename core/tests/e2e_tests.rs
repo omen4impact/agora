@@ -184,7 +184,7 @@ async fn test_e2e_full_voice_chain() {
         .map(|i| (i as f32 * 0.02).sin() * 0.6)
         .collect();
 
-    let encoded = processor
+    let _encoded = processor
         .process_and_encode(&mut mic_frame)
         .expect("Failed to encode");
 

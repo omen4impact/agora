@@ -1,5 +1,5 @@
-use agora_core::ice::{Candidate, CandidateType, IceAgent, IceConfig, TransportType};
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use agora_core::ice::{Candidate, CandidateType, IceAgent, IceConfig};
+use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 fn bench_candidate_creation(c: &mut Criterion) {
@@ -21,7 +21,7 @@ fn bench_candidate_creation(c: &mut Criterion) {
 fn bench_candidate_priority(c: &mut Criterion) {
     let mut group = c.benchmark_group("ice_candidate_priority");
 
-    let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)), 7001);
+    let _addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)), 7001);
 
     group.bench_function("calculate_priority", |b| {
         b.iter(|| black_box(Candidate::compute_priority(CandidateType::Host, 65535, 1)));

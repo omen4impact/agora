@@ -1,6 +1,6 @@
 use crate::config::NodeConfig;
 use crate::dashboard::{Dashboard, DashboardData};
-use crate::discovery::{NodeAdvertisement, NodeCapability, NodeDiscovery, NodeMode};
+use crate::discovery::{NodeAdvertisement, NodeDiscovery, NodeMode};
 use crate::error::NodeError;
 use crate::metrics::NodeMetrics;
 use agora_core::{Identity, IdentityStorage, NetworkNode};
@@ -92,7 +92,7 @@ async fn run_network(
         advertisement.region = region.clone();
     }
 
-    let discovery = Arc::new(tokio::sync::RwLock::new(NodeDiscovery::new()));
+    let _discovery = Arc::new(tokio::sync::RwLock::new(NodeDiscovery::new()));
 
     {
         let mut data = dashboard_state.write().await;
@@ -125,7 +125,7 @@ async fn run_network(
             _ = advertise_interval.tick() => {
                 tracing::debug!("Advertising node in DHT: {}", advertisement.dht_key());
 
-                let serialized = match advertisement.serialize() {
+                let _serialized = match advertisement.serialize() {
                     Ok(s) => s,
                     Err(e) => {
                         tracing::error!("Failed to serialize advertisement: {}", e);

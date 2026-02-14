@@ -1,5 +1,3 @@
-use serde_json;
-
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum SignalingMessage {
