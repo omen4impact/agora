@@ -4,18 +4,20 @@
 
 Agora is a decentralized P2P voice chat application. This file provides context for AI assistants working on the codebase.
 
-## Current Status (Audit: 2026-02-14)
+## Current Status (Audit: 2026-02-15)
 
 **Phase 1: COMPLETED** ✅  
 **Phase 2: COMPLETED** ✅
+**Status: BETA RELEASED** 🚀
 
-**Status: BETA READY** 🎉
+**Release:** v0.3.0-beta.1 - https://github.com/omen4impact/agora/releases/tag/v0.3.0-beta.1
 
 ### Test Coverage
 - **Rust**: 243 tests passing (202 unit + 24 integration + 17 E2E + 14 node)
 - **Flutter**: 16 tests passing
+- **Live Tests**: 29 manual tests passed (see docs/TEST_REPORT.md)
 
-### Security Audit (2026-02-14)
+### Security Audit (2026-02-15)
 - ✅ Migrated from unmaintained `bincode` to `postcard`
 - ✅ Password hashing with HKDF + random salt
 - ✅ FFI error handling (no panics)
@@ -444,10 +446,20 @@ pub fn do_something() -> Result<String> {
 - [x] Echo Cancellation (WebRTC AEC) ✅
 - [x] Security: bincode → postcard migration ✅
 - [x] Security: Password hashing with salt ✅
-- [ ] Beta Release
+- [x] Beta Release ✅
+- [ ] Phase 3: Production Ready
 - [ ] Community Building
 
-## References
+## Documentation
+
+### User Documentation
+- [docs/FEATURES.md](./docs/FEATURES.md) - Feature overview and usage
+- [docs/TEST_REPORT.md](./docs/TEST_REPORT.md) - Test results and verification
+- [docs/ROADMAP.md](./docs/ROADMAP.md) - Phase 3 planning and priorities
+- [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md) - Deployment guide
+- [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) - System architecture
+
+### References
 
 - [libp2p docs](https://docs.libp2p.io/)
 - [Tauri v2 guide](https://v2.tauri.app/)
