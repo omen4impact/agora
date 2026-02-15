@@ -124,7 +124,7 @@ fn main() {
         settings: Arc::new(Mutex::new(AppSettings::default())),
     };
 
-    tauri::Builder::default()
+    let result = tauri::Builder::default()
         .manage(state)
         .invoke_handler(tauri::generate_handler![
             init_identity,
@@ -151,8 +151,12 @@ fn main() {
             load_settings,
             get_settings,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .run(tauri::generate_context!());
+
+    if let Err(e) = result {
+        eprintln!("Fatal error running Agora: {}", e);
+        std::process::exit(1);
+    }
 }
 
 #[tauri::command]
@@ -221,17 +225,27 @@ async fn create_room(
         has_password: room.has_password(),
     };
 
-    let mut room_lock = state.current_room.lock().await;
-    *room_lock = Some(RoomState {
-        id: room.id.clone(),
-        name: room.name.clone(),
-        link: info.link.clone(),
-    });
+    let room_id = room.id.clone();
+    let link = info.link.clone();
+    let name_clone = room.name.clone();
 
-    if let Some(cmd_tx) = state.network_command.lock().await.as_ref() {
-        let _ = cmd_tx
-            .send(NetworkCommand::JoinRoom { room_id: room.id })
-            .await;
+    {
+        let mut room_lock = state.current_room.lock().await;
+        *room_lock = Some(RoomState {
+            id: room_id.clone(),
+            name: name_clone,
+            link: link.clone(),
+        });
+    }
+
+    {
+        let cmd_lock = state.network_command.lock().await;
+        if let Some(cmd_tx) = cmd_lock.as_ref() {
+            cmd_tx
+                .send(NetworkCommand::JoinRoom { room_id })
+                .await
+                .map_err(|e| format!("Failed to join room: network unavailable - {}", e))?;
+        }
     }
 
     Ok(info)
@@ -242,19 +256,25 @@ async fn join_room(state: tauri::State<'_, AppState>, room_link: String) -> Resu
     let (room_id, _password) = agora_core::room::parse_room_link(&room_link)
         .ok_or_else(|| "Invalid room link".to_string())?;
 
-    let mut room_lock = state.current_room.lock().await;
-    *room_lock = Some(RoomState {
-        id: room_id.clone(),
-        name: None,
-        link: room_link,
-    });
+    {
+        let mut room_lock = state.current_room.lock().await;
+        *room_lock = Some(RoomState {
+            id: room_id.clone(),
+            name: None,
+            link: room_link,
+        });
+    }
 
-    if let Some(cmd_tx) = state.network_command.lock().await.as_ref() {
-        let _ = cmd_tx
-            .send(NetworkCommand::JoinRoom {
-                room_id: room_id.clone(),
-            })
-            .await;
+    {
+        let cmd_lock = state.network_command.lock().await;
+        if let Some(cmd_tx) = cmd_lock.as_ref() {
+            cmd_tx
+                .send(NetworkCommand::JoinRoom {
+                    room_id: room_id.clone(),
+                })
+                .await
+                .map_err(|e| format!("Failed to join room: network unavailable - {}", e))?;
+        }
     }
 
     Ok(room_id)
@@ -278,108 +298,151 @@ async fn start_network(
     let mut event_rx = network.subscribe_events();
     let cmd_tx = network.command_sender();
 
-    *state.network_command.lock().await = Some(cmd_tx.clone());
+    let (_shutdown_tx, mut shutdown_rx) = mpsc::channel::<()>(1);
+
+    {
+        let mut cmd_lock = state.network_command.lock().await;
+        *cmd_lock = Some(cmd_tx.clone());
+    }
 
     let app_handle = app.clone();
-    let handle =
-        tokio::spawn(async move {
-            while let Ok(event) = event_rx.recv().await {
-                match event {
-                    NetworkEvent::PeerConnected { peer_id, addr } => {
-                        let _ = app_handle.emit(
-                            "peer-connected",
-                            serde_json::json!({
-                                "peer_id": peer_id.to_string(),
-                                "addr": addr.to_string()
-                            }),
-                        );
+    let handle = tokio::spawn(async move {
+        loop {
+            tokio::select! {
+                result = event_rx.recv() => {
+                    match result {
+                        Ok(event) => {
+                            match event {
+                                NetworkEvent::PeerConnected { peer_id, addr } => {
+                                    let _ = app_handle.emit(
+                                        "peer-connected",
+                                        serde_json::json!({
+                                            "peer_id": peer_id.to_string(),
+                                            "addr": addr.to_string()
+                                        }),
+                                    );
+                                }
+                                NetworkEvent::PeerDisconnected { peer_id } => {
+                                    let _ = app_handle.emit(
+                                        "peer-disconnected",
+                                        serde_json::json!({
+                                            "peer_id": peer_id.to_string()
+                                        }),
+                                    );
+                                }
+                                NetworkEvent::ProvidersFound { room_id, providers } => {
+                                    let _ = app_handle.emit("providers-found", serde_json::json!({
+                                        "room_id": room_id,
+                                        "providers": providers.iter().map(|p| p.to_string()).collect::<Vec<_>>()
+                                    }));
+                                }
+                                NetworkEvent::AudioReceived { peer_id, packet } => {
+                                    let _ = app_handle.emit(
+                                        "audio-received",
+                                        serde_json::json!({
+                                            "peer_id": peer_id.to_string(),
+                                            "sequence": packet.sequence
+                                        }),
+                                    );
+                                }
+                                NetworkEvent::RoomJoined { room_id, peer_id } => {
+                                    let _ = app_handle.emit(
+                                        "room-joined",
+                                        serde_json::json!({
+                                            "room_id": room_id,
+                                            "peer_id": peer_id.to_string()
+                                        }),
+                                    );
+                                }
+                                NetworkEvent::RoomLeft { room_id, peer_id } => {
+                                    let _ = app_handle.emit(
+                                        "room-left",
+                                        serde_json::json!({
+                                            "room_id": room_id,
+                                            "peer_id": peer_id.to_string()
+                                        }),
+                                    );
+                                }
+                                NetworkEvent::NatStatusChanged { is_public } => {
+                                    let _ = app_handle.emit(
+                                        "nat-status",
+                                        serde_json::json!({
+                                            "is_public": is_public
+                                        }),
+                                    );
+                                }
+                                NetworkEvent::Listening(addr) => {
+                                    let _ = app_handle.emit(
+                                        "listening",
+                                        serde_json::json!({
+                                            "addr": addr.to_string()
+                                        }),
+                                    );
+                                }
+                                NetworkEvent::Error(e) => {
+                                    tracing::error!("Network error: {}", e);
+                                    let _ = app_handle.emit(
+                                        "network-error",
+                                        serde_json::json!({ "error": e.to_string() }),
+                                    );
+                                }
+                                _ => {}
+                            }
+                        }
+                        Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                            tracing::info!("Event channel closed, exiting event loop");
+                            break;
+                        }
+                        Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                            tracing::warn!("Event channel lagged by {} messages", n);
+                        }
                     }
-                    NetworkEvent::PeerDisconnected { peer_id } => {
-                        let _ = app_handle.emit(
-                            "peer-disconnected",
-                            serde_json::json!({
-                                "peer_id": peer_id.to_string()
-                            }),
-                        );
-                    }
-                    NetworkEvent::ProvidersFound { room_id, providers } => {
-                        let _ = app_handle.emit("providers-found", serde_json::json!({
-                        "room_id": room_id,
-                        "providers": providers.iter().map(|p| p.to_string()).collect::<Vec<_>>()
-                    }));
-                    }
-                    NetworkEvent::AudioReceived { peer_id, packet } => {
-                        let _ = app_handle.emit(
-                            "audio-received",
-                            serde_json::json!({
-                                "peer_id": peer_id.to_string(),
-                                "sequence": packet.sequence
-                            }),
-                        );
-                    }
-                    NetworkEvent::RoomJoined { room_id, peer_id } => {
-                        let _ = app_handle.emit(
-                            "room-joined",
-                            serde_json::json!({
-                                "room_id": room_id,
-                                "peer_id": peer_id.to_string()
-                            }),
-                        );
-                    }
-                    NetworkEvent::RoomLeft { room_id, peer_id } => {
-                        let _ = app_handle.emit(
-                            "room-left",
-                            serde_json::json!({
-                                "room_id": room_id,
-                                "peer_id": peer_id.to_string()
-                            }),
-                        );
-                    }
-                    NetworkEvent::NatStatusChanged { is_public } => {
-                        let _ = app_handle.emit(
-                            "nat-status",
-                            serde_json::json!({
-                                "is_public": is_public
-                            }),
-                        );
-                    }
-                    NetworkEvent::Listening(addr) => {
-                        let _ = app_handle.emit(
-                            "listening",
-                            serde_json::json!({
-                                "addr": addr.to_string()
-                            }),
-                        );
-                    }
-                    _ => {}
+                }
+                _ = shutdown_rx.recv() => {
+                    tracing::info!("Network event loop shutting down");
+                    break;
                 }
             }
-        });
+        }
+    });
 
-    tokio::spawn(async move {
+    let _network_handle = tokio::spawn(async move {
         network.run().await;
     });
 
-    *state.network_handle.lock().await = Some(handle);
+    {
+        let mut handle_lock = state.network_handle.lock().await;
+        *handle_lock = Some(handle);
+    }
 
     Ok(peer_id)
 }
 
 #[tauri::command]
 async fn stop_network(state: tauri::State<'_, AppState>) -> Result<(), String> {
-    if let Some(cmd_tx) = state.network_command.lock().await.take() {
-        let _ = cmd_tx.send(NetworkCommand::Stop).await;
+    {
+        let cmd_lock = state.network_command.lock().await;
+        if let Some(cmd_tx) = cmd_lock.as_ref() {
+            let _ = cmd_tx.send(NetworkCommand::Stop).await;
+        }
     }
 
-    if let Some(handle) = state.network_handle.lock().await.take() {
-        handle.abort();
+    {
+        let mut handle_lock = state.network_handle.lock().await;
+        if let Some(handle) = handle_lock.take() {
+            handle.abort();
+        }
     }
 
-    let mut room_lock = state.current_room.lock().await;
-    *room_lock = None;
+    {
+        let mut room_lock = state.current_room.lock().await;
+        *room_lock = None;
+    }
 
-    let mut participants = state.participants.lock().await;
-    participants.clear();
+    {
+        let mut participants = state.participants.lock().await;
+        participants.clear();
+    }
 
     Ok(())
 }
@@ -399,8 +462,14 @@ async fn start_audio(
         .start()
         .map_err(|e| format!("Failed to start audio: {}", e))?;
 
-    let mut audio_lock = state.audio.lock().await;
-    *audio_lock = Some(audio);
+    if !audio.is_running() {
+        return Err("Audio pipeline failed to start".to_string());
+    }
+
+    {
+        let mut audio_lock = state.audio.lock().await;
+        *audio_lock = Some(audio);
+    }
 
     Ok(())
 }
@@ -448,39 +517,46 @@ async fn get_audio_devices() -> Result<AudioDevices, String> {
 
 #[tauri::command]
 async fn init_mixer(state: tauri::State<'_, AppState>) -> Result<(), String> {
-    let id_lock = state.identity.lock().await;
-    let peer_id = id_lock
-        .as_ref()
-        .map(|i| i.peer_id())
-        .ok_or_else(|| "Identity not initialized".to_string())?;
-    drop(id_lock);
+    let peer_id = {
+        let id_lock = state.identity.lock().await;
+        id_lock
+            .as_ref()
+            .map(|i| i.peer_id())
+            .ok_or_else(|| "Identity not initialized".to_string())?
+    };
 
     let mixer = MixerManager::new(peer_id, Some(MixerConfig::default()));
 
-    let mut mixer_lock = state.mixer.lock().await;
-    *mixer_lock = Some(mixer);
+    {
+        let mut mixer_lock = state.mixer.lock().await;
+        *mixer_lock = Some(mixer);
+    }
 
     Ok(())
 }
 
 #[tauri::command]
 async fn add_participant(state: tauri::State<'_, AppState>, peer_id: String) -> Result<(), String> {
-    let mut mixer_lock = state.mixer.lock().await;
-    if let Some(mixer) = mixer_lock.as_mut() {
-        mixer.add_participant(peer_id.clone());
+    {
+        let mut mixer_lock = state.mixer.lock().await;
+        if let Some(mixer) = mixer_lock.as_mut() {
+            mixer.add_participant(peer_id.clone());
+        }
     }
 
-    let mut participants = state.participants.lock().await;
-    participants.insert(
-        peer_id.clone(),
-        ParticipantInfo {
-            peer_id,
-            display_name: None,
-            is_mixer: false,
-            is_muted: false,
-            latency_ms: 0,
-        },
-    );
+    {
+        let mut participants = state.participants.lock().await;
+        participants.insert(
+            peer_id.clone(),
+            ParticipantInfo {
+                peer_id,
+                display_name: None,
+                is_mixer: false,
+                is_muted: false,
+                latency_ms: 0,
+            },
+        );
+    }
 
     Ok(())
 }
@@ -490,13 +566,17 @@ async fn remove_participant(
     state: tauri::State<'_, AppState>,
     peer_id: String,
 ) -> Result<(), String> {
-    let mut mixer_lock = state.mixer.lock().await;
-    if let Some(mixer) = mixer_lock.as_mut() {
-        mixer.remove_participant(&peer_id);
+    {
+        let mut mixer_lock = state.mixer.lock().await;
+        if let Some(mixer) = mixer_lock.as_mut() {
+            mixer.remove_participant(&peer_id);
+        }
     }
 
-    let mut participants = state.participants.lock().await;
-    participants.remove(&peer_id);
+    {
+        let mut participants = state.participants.lock().await;
+        participants.remove(&peer_id);
+    }
 
     Ok(())
 }
@@ -545,23 +625,28 @@ async fn get_participants(
 
 #[tauri::command]
 async fn set_muted(state: tauri::State<'_, AppState>, is_muted: bool) -> Result<(), String> {
-    let id_lock = state.identity.lock().await;
-    let peer_id = id_lock
-        .as_ref()
-        .map(|i| i.peer_id())
-        .ok_or_else(|| "Identity not initialized".to_string())?;
-    drop(id_lock);
+    let peer_id = {
+        let id_lock = state.identity.lock().await;
+        id_lock
+            .as_ref()
+            .map(|i| i.peer_id())
+            .ok_or_else(|| "Identity not initialized".to_string())?
+    };
 
-    if let Some(cmd_tx) = state.network_command.lock().await.as_ref() {
+    let parsed_peer_id = peer_id
+        .parse()
+        .map_err(|e| format!("Invalid peer ID format: {}", e))?;
+
+    let cmd_lock = state.network_command.lock().await;
+    if let Some(cmd_tx) = cmd_lock.as_ref() {
         let msg = ControlMessage::mute_changed(peer_id.clone(), is_muted);
-        if let Ok(peer_id_parsed) = peer_id.parse() {
-            let _ = cmd_tx
-                .send(NetworkCommand::SendControl {
-                    peer_id: peer_id_parsed,
-                    message: msg,
-                })
-                .await;
-        }
+        cmd_tx
+            .send(NetworkCommand::SendControl {
+                peer_id: parsed_peer_id,
+                message: msg,
+            })
+            .await
+            .map_err(|e| format!("Failed to send mute command: {}", e))?;
     }
 
     Ok(())
@@ -622,8 +707,10 @@ async fn save_settings(
     let app_settings: AppSettings =
         serde_json::from_value(settings).map_err(|e| format!("Invalid settings: {}", e))?;
 
-    let mut settings_lock = state.settings.lock().await;
-    *settings_lock = app_settings.clone();
+    {
+        let mut settings_lock = state.settings.lock().await;
+        *settings_lock = app_settings.clone();
+    }
 
     let config_dir = app
         .path()
@@ -661,8 +748,10 @@ async fn load_settings(
         let app_settings: AppSettings = serde_json::from_str(&settings_json)
             .map_err(|e| format!("Failed to parse settings: {}", e))?;
 
-        let mut settings_lock = state.settings.lock().await;
-        *settings_lock = app_settings.clone();
+        {
+            let mut settings_lock = state.settings.lock().await;
+            *settings_lock = app_settings.clone();
+        }
 
         app_settings
     } else {

@@ -334,6 +334,7 @@ pub enum NetworkEvent {
     IceConnectionStateChanged {
         state: String,
     },
+    Error(String),
 }
 
 impl NetworkNode {
@@ -606,10 +607,13 @@ impl NetworkNode {
     }
 
     pub async fn run(&mut self) {
-        let mut command_rx = self
-            .command_rx
-            .take()
-            .expect("Command receiver already taken");
+        let mut command_rx = match self.command_rx.take() {
+            Some(rx) => rx,
+            None => {
+                tracing::error!("Command receiver already taken - run() called twice?");
+                return;
+            }
+        };
 
         loop {
             tokio::select! {

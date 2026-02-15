@@ -911,6 +911,11 @@
     </div>
 
     <script type="module">
+        if (!window.__TAURI__) {
+            document.body.innerHTML = '<div style="display:flex;justify-content:center;align-items:center;height:100vh;background:#1a1a2e;color:#ff4444;font-size:1.5rem;text-align:center;padding:2rem;"><div><h1>Error</h1><p>This application must run in the Agora Desktop app.<br>Please download and run the desktop application.</p></div></div>';
+            throw new Error('Tauri API not available - must run in desktop app');
+        }
+        
         const { invoke } = window.__TAURI__.core;
         const { listen } = window.__TAURI__.event;
         
@@ -925,7 +930,8 @@
             participants: [],
             audioLevels: {},
             connectedPeers: new Set(),
-            settings: null
+            settings: null,
+            intervalIds: []
         };
         
         const homeScreen = document.getElementById('homeScreen');
@@ -1023,6 +1029,12 @@
                 const { addr } = event.payload;
                 console.log('Listening on:', addr);
             });
+            
+            await listen('network-error', (event) => {
+                const { error } = event.payload;
+                console.error('Network error:', error);
+                showToast(`Network error: ${error}`);
+            });
         }
         
         async function init() {
@@ -1034,7 +1046,19 @@
                 peerIdDisplayEl.textContent = `Peer ID: ${state.peerId.substring(0, 20)}...`;
             } catch (e) {
                 statusTextEl.textContent = `Error: ${e}`;
-                console.error(e);
+                statusEl.classList.add('disconnected');
+                console.error('Init failed:', e);
+                
+                const retryBtn = document.createElement('button');
+                retryBtn.className = 'btn btn-primary';
+                retryBtn.textContent = 'Retry';
+                retryBtn.style.marginTop = '1rem';
+                retryBtn.onclick = () => {
+                    retryBtn.remove();
+                    statusTextEl.textContent = 'Initializing...';
+                    init();
+                };
+                statusEl.parentElement.appendChild(retryBtn);
             }
         }
         
@@ -1214,9 +1238,19 @@
                 sessionScreen.classList.remove('hidden');
                 
                 updateMixerStatus();
-                setInterval(updateMixerStatus, 2000);
+                state.intervalIds.push(setInterval(updateMixerStatus, 2000));
                 
-                simulateAudioLevels();
+                state.intervalIds.push(setInterval(() => {
+                    state.participants.forEach(p => {
+                        if (p.isSelf && !state.isMuted) {
+                            const level = Math.random();
+                            const avatar = document.getElementById(`avatar-${p.peerId}`);
+                            if (avatar) {
+                                avatar.classList.toggle('speaking', level > 0.3);
+                            }
+                        }
+                    });
+                }, 100));
                 
             } catch (e) {
                 showToast(`Failed to start session: ${e}`);
@@ -1226,6 +1260,9 @@
         
         async function leaveSession() {
             try {
+                state.intervalIds.forEach(id => clearInterval(id));
+                state.intervalIds = [];
+                
                 await invoke('stop_audio');
                 await invoke('stop_network');
                 
@@ -1310,20 +1347,6 @@
                 el.remove();
             }
             updateParticipantCount();
-        }
-        
-        function simulateAudioLevels() {
-            setInterval(() => {
-                state.participants.forEach(p => {
-                    if (p.isSelf && !state.isMuted) {
-                        const level = Math.random();
-                        const avatar = document.getElementById(`avatar-${p.peerId}`);
-                        if (avatar) {
-                            avatar.classList.toggle('speaking', level > 0.3);
-                        }
-                    }
-                });
-            }, 100);
         }
         
         function openSettingsModal() {
@@ -1431,6 +1454,12 @@
         
         async function importIdentityFromFile(file) {
             try {
+                const MAX_FILE_SIZE = 64 * 1024;
+                if (file.size > MAX_FILE_SIZE) {
+                    showToast('Identity file too large (max 64KB)');
+                    return;
+                }
+                
                 const text = await file.text();
                 await invoke('import_identity', { json: text });
                 showToast('Identity imported');

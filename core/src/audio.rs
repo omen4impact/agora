@@ -231,7 +231,13 @@ impl AudioBackend {
             SampleFormat::F32 => device.device.build_input_stream(
                 &stream_config,
                 move |data: &[f32], _: &cpal::InputCallbackInfo| {
-                    let mut buf = buffer.lock().unwrap();
+                    let mut buf = match buffer.lock() {
+                        Ok(guard) => guard,
+                        Err(e) => {
+                            tracing::error!("Audio input mutex poisoned: {}", e);
+                            return;
+                        }
+                    };
                     for &sample in data {
                         let processed = if enable_noise_suppression {
                             apply_noise_gate(sample, noise_gate)
@@ -251,7 +257,13 @@ impl AudioBackend {
             SampleFormat::I16 => device.device.build_input_stream(
                 &stream_config,
                 move |data: &[i16], _: &cpal::InputCallbackInfo| {
-                    let mut buf = buffer.lock().unwrap();
+                    let mut buf = match buffer.lock() {
+                        Ok(guard) => guard,
+                        Err(e) => {
+                            tracing::error!("Audio input mutex poisoned: {}", e);
+                            return;
+                        }
+                    };
                     for &sample in data {
                         let sample_f32 = sample as f32 / i16::MAX as f32;
                         let processed = if enable_noise_suppression {
@@ -260,6 +272,10 @@ impl AudioBackend {
                             sample_f32
                         };
                         buf.push(processed);
+                    }
+
+                    if buf.len() > FRAME_SIZE * 10 {
+                        buf.drain(0..FRAME_SIZE);
                     }
                 },
                 |err| tracing::error!("Input stream error: {}", err),
@@ -294,7 +310,14 @@ impl AudioBackend {
             SampleFormat::F32 => device.device.build_output_stream(
                 &stream_config,
                 move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
-                    let mut buf = buffer.lock().unwrap();
+                    let mut buf = match buffer.lock() {
+                        Ok(guard) => guard,
+                        Err(e) => {
+                            tracing::error!("Audio output mutex poisoned: {}", e);
+                            data.fill(0.0);
+                            return;
+                        }
+                    };
                     let len = data.len().min(buf.len());
                     data[..len].copy_from_slice(&buf[..len]);
                     buf.drain(0..len);
@@ -305,11 +328,19 @@ impl AudioBackend {
             SampleFormat::I16 => device.device.build_output_stream(
                 &stream_config,
                 move |data: &mut [i16], _: &cpal::OutputCallbackInfo| {
-                    let mut buf = buffer.lock().unwrap();
+                    let mut buf = match buffer.lock() {
+                        Ok(guard) => guard,
+                        Err(e) => {
+                            tracing::error!("Audio output mutex poisoned: {}", e);
+                            data.fill(0);
+                            return;
+                        }
+                    };
                     let to_drain = data.len().min(buf.len());
                     for (i, sample) in data.iter_mut().enumerate() {
                         *sample = if i < buf.len() {
-                            (buf[i] * i16::MAX as f32) as i16
+                            let clamped = buf[i].clamp(-1.0, 1.0);
+                            (clamped * i16::MAX as f32) as i16
                         } else {
                             0
                         };
@@ -375,6 +406,8 @@ impl AudioPipeline {
         let input_buffer = self.input_buffer.clone();
         let output_buffer = self.output_buffer.clone();
         let (tx, rx): (Sender<AudioCommand>, Receiver<AudioCommand>) = mpsc::channel();
+        let (ready_tx, ready_rx): (Sender<AgoraResult<()>>, Receiver<AgoraResult<()>>) =
+            mpsc::channel();
 
         let handle = thread::spawn(move || {
             let mut backend = AudioBackend::new();
@@ -383,8 +416,11 @@ impl AudioPipeline {
 
             if let Err(e) = backend.start(&config) {
                 tracing::error!("Failed to start audio backend: {}", e);
+                let _ = ready_tx.send(Err(e));
                 return;
             }
+
+            let _ = ready_tx.send(Ok(()));
 
             loop {
                 match rx.try_recv() {
@@ -402,12 +438,23 @@ impl AudioPipeline {
             }
         });
 
-        self.command_tx = Some(tx);
-        self._thread_handle = Some(handle);
-        self.is_running = true;
-
-        tracing::info!("Audio pipeline started");
-        Ok(())
+        match ready_rx.recv_timeout(std::time::Duration::from_secs(5)) {
+            Ok(Ok(())) => {
+                self.command_tx = Some(tx);
+                self._thread_handle = Some(handle);
+                self.is_running = true;
+                tracing::info!("Audio pipeline started");
+                Ok(())
+            }
+            Ok(Err(e)) => {
+                handle.join().ok();
+                Err(e)
+            }
+            Err(_) => {
+                tracing::error!("Audio pipeline start timeout");
+                Err(Error::Audio("Audio start timeout".to_string()))
+            }
+        }
     }
 
     pub fn stop(&mut self) {
@@ -452,6 +499,7 @@ impl AudioPipeline {
 }
 
 fn apply_noise_gate(sample: f32, threshold: f32) -> f32 {
+    let threshold = threshold.clamp(0.0, 0.99);
     if sample.abs() < threshold {
         0.0
     } else {
