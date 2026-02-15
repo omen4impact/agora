@@ -1157,7 +1157,7 @@
             
             try {
                 statusTextEl.textContent = 'Joining room...';
-                const roomId = await invoke('join_room', { roomLink: link });
+                const roomId = await invoke('join_room', { room_link: link });
                 state.currentRoom = { id: roomId, link };
                 
                 await startSession(state.currentRoom);
@@ -1194,7 +1194,7 @@
             btn.classList.toggle('active', state.isMuted);
             btn.textContent = state.isMuted ? '🔇' : '🎤';
             label.textContent = state.isMuted ? 'Unmute' : 'Mute';
-            invoke('set_muted', { isMuted: state.isMuted }).catch(console.error);
+            invoke('set_muted', { is_muted: state.isMuted }).catch(console.error);
         }
         
         function toggleDeafen() {
@@ -1284,7 +1284,7 @@
         
         async function startSession(roomInfo) {
             try {
-                const networkPeerId = await invoke('start_network', { listenPort: null });
+                const networkPeerId = await invoke('start_network', { listen_port: null });
                 console.log('Network started:', networkPeerId);
                 
                 // Get and display network info
@@ -1298,7 +1298,7 @@
                     console.error('Failed to get network info:', e);
                 }
                 
-                await invoke('start_audio', { noiseSuppression: true });
+                await invoke('start_audio', { noise_suppression: true });
                 console.log('Audio started');
                 
                 await invoke('init_mixer');
