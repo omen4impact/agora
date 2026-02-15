@@ -1096,15 +1096,6 @@
                     console.log('[INIT] Initialization complete');
                 });
                 
-                const startTime = Date.now();
-                // Identity is initialized by Rust setup hook
-                // state.peerId = await invoke('init_identity');
-                console.log(`[INIT] Identity generated in ${Date.now() - startTime}ms`);
-                
-                statusEl.classList.remove('disconnected');
-                statusTextEl.textContent = 'Ready';
-                peerIdDisplayEl.textContent = `Peer ID: ${state.peerId.substring(0, 20)}...`;
-                console.log('[INIT] Initialization complete');
             } catch (e) {
                 console.error('[INIT] Failed:', e);
                 statusTextEl.textContent = `Error: ${e}`;
