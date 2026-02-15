@@ -1084,10 +1084,21 @@
             try {
                 console.log('[INIT] Setting up event listeners...');
                 setupEventListeners();
-                console.log('[INIT] Event listeners set up, generating identity...');
+                console.log('[INIT] Event listeners set up, waiting for identity...');
+                
+                // Listen for identity-ready event from Rust
+                listen('identity-ready', (event) => {
+                    state.peerId = event.payload;
+                    console.log('[INIT] Got identity from Rust:', state.peerId);
+                    statusEl.classList.remove('disconnected');
+                    statusTextEl.textContent = 'Ready';
+                    peerIdDisplayEl.textContent = `Peer ID: ${state.peerId.substring(0, 20)}...`;
+                    console.log('[INIT] Initialization complete');
+                });
                 
                 const startTime = Date.now();
-                state.peerId = await invoke('init_identity');
+                // Identity is initialized by Rust setup hook
+                // state.peerId = await invoke('init_identity');
                 console.log(`[INIT] Identity generated in ${Date.now() - startTime}ms`);
                 
                 statusEl.classList.remove('disconnected');

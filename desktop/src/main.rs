@@ -7,11 +7,11 @@ use agora_core::{
 use std::collections::HashMap;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager};
-use tokio::sync::Mutex;
+use tokio::sync::{mpsc, Mutex};
 
 struct AppState {
     identity: Arc<Mutex<Option<agora_core::Identity>>>,
-    network_handle: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
+    network_handle: Arc<Mutex<Option<tauri::async_runtime::JoinHandle<()>>>>,
     network_command: Arc<Mutex<Option<mpsc::Sender<NetworkCommand>>>>,
     audio: Arc<Mutex<Option<AudioPipeline>>>,
     mixer: Arc<Mutex<Option<MixerManager>>>,
@@ -21,8 +21,6 @@ struct AppState {
     listen_addrs: Arc<Mutex<Vec<String>>>,
     connected_peers: Arc<Mutex<Vec<String>>>,
 }
-
-use tokio::sync::mpsc;
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct AppSettings {
@@ -118,6 +116,8 @@ struct NetworkInfo {
 }
 
 fn main() {
+    eprintln!("[MAIN] Starting Agora...");
+
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
@@ -135,7 +135,7 @@ fn main() {
         connected_peers: Arc::new(Mutex::new(Vec::new())),
     };
 
-    let result = tauri::Builder::default()
+    tauri::Builder::default()
         .manage(state)
         .invoke_handler(tauri::generate_handler![
             init_identity,
@@ -164,77 +164,95 @@ fn main() {
             get_network_info,
             connect_peer,
         ])
-        .run(tauri::generate_context!());
+        .setup(|app| {
+            eprintln!("[SETUP] Running setup...");
+            let handle = app.handle().clone();
 
-    if let Err(e) = result {
-        eprintln!("Fatal error running Agora: {}", e);
-        std::process::exit(1);
-    }
+            // Spawn a task that will call init_identity after a delay
+            tauri::async_runtime::spawn(async move {
+                tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+                eprintln!("[SETUP] Calling init_identity directly from Rust...");
+
+                // Get the state and call init_identity logic directly
+                let state = handle.state::<AppState>();
+                match agora_core::Identity::generate() {
+                    Ok(identity) => {
+                        let peer_id = identity.peer_id();
+                        eprintln!("[SETUP] Generated peer_id: {}", peer_id);
+                        let mut lock = state.identity.lock().await;
+                        *lock = Some(identity);
+                        eprintln!("[SETUP] Identity stored!");
+
+                        // Emit event to frontend
+                        let _ = handle.emit("identity-ready", peer_id.clone());
+                        eprintln!("[SETUP] Emitted identity-ready event");
+                    }
+                    Err(e) => {
+                        eprintln!("[SETUP] Failed to generate identity: {}", e);
+                    }
+                }
+            });
+
+            Ok(())
+        })
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 async fn init_identity(state: tauri::State<'_, AppState>) -> Result<String, String> {
-    tracing::info!("[INIT] Generating new identity...");
-    let identity = agora_core::Identity::generate().map_err(|e| {
-        tracing::error!("[INIT] Failed to generate identity: {}", e);
-        format!("Failed to generate identity: {}", e)
-    })?;
+    eprintln!("[INIT] Command called!");
+    let identity = agora_core::Identity::generate().map_err(|e| format!("Failed: {}", e))?;
     let peer_id = identity.peer_id();
-    tracing::info!("[INIT] Identity generated: {}", peer_id);
-
-    let mut id_lock = state.identity.lock().await;
-    *id_lock = Some(identity);
-    tracing::info!("[INIT] Identity stored in state");
-
+    eprintln!("[INIT] Generated: {}", peer_id);
+    let mut lock = state.identity.lock().await;
+    *lock = Some(identity);
+    eprintln!("[INIT] Stored!");
     Ok(peer_id)
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 async fn get_peer_id(state: tauri::State<'_, AppState>) -> Result<String, String> {
-    let id_lock = state.identity.lock().await;
-    id_lock
-        .as_ref()
+    let lock = state.identity.lock().await;
+    lock.as_ref()
         .map(|i| i.peer_id())
-        .ok_or_else(|| "Identity not initialized".to_string())
+        .ok_or_else(|| "Not initialized".to_string())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 async fn get_display_name(state: tauri::State<'_, AppState>) -> Result<Option<String>, String> {
-    let id_lock = state.identity.lock().await;
-    id_lock
-        .as_ref()
+    let lock = state.identity.lock().await;
+    lock.as_ref()
         .map(|i| i.display_name().map(|s| s.to_string()))
-        .ok_or_else(|| "Identity not initialized".to_string())
+        .ok_or_else(|| "Not initialized".to_string())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 async fn set_display_name(state: tauri::State<'_, AppState>, name: String) -> Result<(), String> {
-    let mut id_lock = state.identity.lock().await;
-    id_lock
-        .as_mut()
+    let mut lock = state.identity.lock().await;
+    lock.as_mut()
         .map(|i| i.set_display_name(name))
-        .ok_or_else(|| "Identity not initialized".to_string())
+        .ok_or_else(|| "Not initialized".to_string())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 async fn create_room(
     state: tauri::State<'_, AppState>,
     name: Option<String>,
     password: Option<String>,
 ) -> Result<RoomInfo, String> {
-    let id_lock = state.identity.lock().await;
-    let peer_id = id_lock
+    let lock = state.identity.lock().await;
+    let peer_id = lock
         .as_ref()
         .map(|i| i.peer_id())
-        .ok_or_else(|| "Identity not initialized".to_string())?;
-    drop(id_lock);
+        .ok_or_else(|| "Not initialized".to_string())?;
+    drop(lock);
 
     let config = agora_core::RoomConfig {
         name,
         password,
         max_participants: Some(20),
     };
-
     let room = agora_core::Room::new(peer_id, config);
     let info = RoomInfo {
         id: room.id.clone(),
@@ -242,7 +260,6 @@ async fn create_room(
         link: room.share_link(),
         has_password: room.has_password(),
     };
-
     let room_id = room.id.clone();
     let link = info.link.clone();
     let name_clone = room.name.clone();
@@ -255,25 +272,20 @@ async fn create_room(
             link: link.clone(),
         });
     }
-
     {
         let cmd_lock = state.network_command.lock().await;
         if let Some(cmd_tx) = cmd_lock.as_ref() {
-            cmd_tx
-                .send(NetworkCommand::JoinRoom { room_id })
-                .await
-                .map_err(|e| format!("Failed to join room: network unavailable - {}", e))?;
+            let _ = cmd_tx.send(NetworkCommand::JoinRoom { room_id }).await;
         }
     }
 
     Ok(info)
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 async fn join_room(state: tauri::State<'_, AppState>, room_link: String) -> Result<String, String> {
-    let (room_id, _password) = agora_core::room::parse_room_link(&room_link)
-        .ok_or_else(|| "Invalid room link".to_string())?;
-
+    let (room_id, _) =
+        agora_core::room::parse_room_link(&room_link).ok_or_else(|| "Invalid link".to_string())?;
     {
         let mut room_lock = state.current_room.lock().await;
         *room_lock = Some(RoomState {
@@ -282,23 +294,20 @@ async fn join_room(state: tauri::State<'_, AppState>, room_link: String) -> Resu
             link: room_link,
         });
     }
-
     {
         let cmd_lock = state.network_command.lock().await;
         if let Some(cmd_tx) = cmd_lock.as_ref() {
-            cmd_tx
+            let _ = cmd_tx
                 .send(NetworkCommand::JoinRoom {
                     room_id: room_id.clone(),
                 })
-                .await
-                .map_err(|e| format!("Failed to join room: network unavailable - {}", e))?;
+                .await;
         }
     }
-
     Ok(room_id)
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 async fn start_network(
     state: tauri::State<'_, AppState>,
     app: AppHandle,
@@ -307,30 +316,23 @@ async fn start_network(
     let listen_addr = listen_port
         .map(|p| format!("/ip4/0.0.0.0/tcp/{}", p))
         .unwrap_or_else(|| "/ip4/0.0.0.0/tcp/0".to_string());
-
     let mut network = NetworkNode::new(Some(&listen_addr))
         .await
-        .map_err(|e| format!("Failed to start network: {}", e))?;
-
+        .map_err(|e| format!("Failed: {}", e))?;
     let peer_id = network.peer_id_string();
     let listen_addrs: Vec<String> = network
         .listen_addrs()
         .iter()
         .map(|a| a.to_string())
         .collect();
-    tracing::info!("[NETWORK] Started with peer_id: {}", peer_id);
-    tracing::info!("[NETWORK] Listening on: {:?}", listen_addrs);
-
     let mut event_rx = network.subscribe_events();
     let cmd_tx = network.command_sender();
-
     let (_shutdown_tx, mut shutdown_rx) = mpsc::channel::<()>(1);
 
     {
         let mut cmd_lock = state.network_command.lock().await;
         *cmd_lock = Some(cmd_tx.clone());
     }
-
     {
         let mut addrs_lock = state.listen_addrs.lock().await;
         *addrs_lock = listen_addrs;
@@ -338,130 +340,40 @@ async fn start_network(
 
     let connected_peers = state.connected_peers.clone();
     let app_handle = app.clone();
-    let handle = tokio::spawn(async move {
+    let handle = tauri::async_runtime::spawn(async move {
         loop {
             tokio::select! {
                 result = event_rx.recv() => {
-                    match result {
-                        Ok(event) => {
-                            match event {
-                                NetworkEvent::PeerConnected { peer_id, addr } => {
-                                    let _ = app_handle.emit(
-                                        "peer-connected",
-                                        serde_json::json!({
-                                            "peer_id": peer_id.to_string(),
-                                            "addr": addr.to_string()
-                                        }),
-                                    );
-                                    {
-                                        let mut peers = connected_peers.lock().await;
-                                        let peer_str = peer_id.to_string();
-                                        if !peers.contains(&peer_str) {
-                                            peers.push(peer_str);
-                                        }
-                                    }
-                                }
-                                NetworkEvent::PeerDisconnected { peer_id } => {
-                                    let _ = app_handle.emit(
-                                        "peer-disconnected",
-                                        serde_json::json!({
-                                            "peer_id": peer_id.to_string()
-                                        }),
-                                    );
-                                    {
-                                        let mut peers = connected_peers.lock().await;
-                                        peers.retain(|p| p != &peer_id.to_string());
-                                    }
-                                }
-                                NetworkEvent::ProvidersFound { room_id, providers } => {
-                                    let _ = app_handle.emit("providers-found", serde_json::json!({
-                                        "room_id": room_id,
-                                        "providers": providers.iter().map(|p| p.to_string()).collect::<Vec<_>>()
-                                    }));
-                                }
-                                NetworkEvent::AudioReceived { peer_id, packet } => {
-                                    let _ = app_handle.emit(
-                                        "audio-received",
-                                        serde_json::json!({
-                                            "peer_id": peer_id.to_string(),
-                                            "sequence": packet.sequence
-                                        }),
-                                    );
-                                }
-                                NetworkEvent::RoomJoined { room_id, peer_id } => {
-                                    let _ = app_handle.emit(
-                                        "room-joined",
-                                        serde_json::json!({
-                                            "room_id": room_id,
-                                            "peer_id": peer_id.to_string()
-                                        }),
-                                    );
-                                }
-                                NetworkEvent::RoomLeft { room_id, peer_id } => {
-                                    let _ = app_handle.emit(
-                                        "room-left",
-                                        serde_json::json!({
-                                            "room_id": room_id,
-                                            "peer_id": peer_id.to_string()
-                                        }),
-                                    );
-                                }
-                                NetworkEvent::NatStatusChanged { is_public } => {
-                                    let _ = app_handle.emit(
-                                        "nat-status",
-                                        serde_json::json!({
-                                            "is_public": is_public
-                                        }),
-                                    );
-                                }
-                                NetworkEvent::Listening(addr) => {
-                                    let _ = app_handle.emit(
-                                        "listening",
-                                        serde_json::json!({
-                                            "addr": addr.to_string()
-                                        }),
-                                    );
-                                }
-                                NetworkEvent::Error(e) => {
-                                    tracing::error!("Network error: {}", e);
-                                    let _ = app_handle.emit(
-                                        "network-error",
-                                        serde_json::json!({ "error": e.to_string() }),
-                                    );
-                                }
-                                _ => {}
+                    if let Ok(event) = result {
+                        match event {
+                            NetworkEvent::PeerConnected { peer_id, addr } => {
+                                let _ = app_handle.emit("peer-connected", serde_json::json!({"peer_id": peer_id.to_string(), "addr": addr.to_string()}));
+                                let mut peers = connected_peers.lock().await; peers.push(peer_id.to_string());
                             }
-                        }
-                        Err(tokio::sync::broadcast::error::RecvError::Closed) => {
-                            tracing::info!("Event channel closed, exiting event loop");
-                            break;
-                        }
-                        Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
-                            tracing::warn!("Event channel lagged by {} messages", n);
+                            NetworkEvent::PeerDisconnected { peer_id } => {
+                                let _ = app_handle.emit("peer-disconnected", serde_json::json!({"peer_id": peer_id.to_string()}));
+                                let mut peers = connected_peers.lock().await; peers.retain(|p| p != &peer_id.to_string());
+                            }
+                            _ => {}
                         }
                     }
                 }
-                _ = shutdown_rx.recv() => {
-                    tracing::info!("Network event loop shutting down");
-                    break;
-                }
+                _ = shutdown_rx.recv() => break,
             }
         }
     });
 
-    let _network_handle = tokio::spawn(async move {
+    tauri::async_runtime::spawn(async move {
         network.run().await;
     });
-
     {
         let mut handle_lock = state.network_handle.lock().await;
         *handle_lock = Some(handle);
     }
-
     Ok(peer_id)
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 async fn stop_network(state: tauri::State<'_, AppState>) -> Result<(), String> {
     {
         let cmd_lock = state.network_command.lock().await;
@@ -469,28 +381,24 @@ async fn stop_network(state: tauri::State<'_, AppState>) -> Result<(), String> {
             let _ = cmd_tx.send(NetworkCommand::Stop).await;
         }
     }
-
     {
         let mut handle_lock = state.network_handle.lock().await;
         if let Some(handle) = handle_lock.take() {
             handle.abort();
         }
     }
-
     {
         let mut room_lock = state.current_room.lock().await;
         *room_lock = None;
     }
-
     {
         let mut participants = state.participants.lock().await;
         participants.clear();
     }
-
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 async fn start_audio(
     state: tauri::State<'_, AppState>,
     noise_suppression: bool,
@@ -499,25 +407,19 @@ async fn start_audio(
         enable_noise_suppression: noise_suppression,
         ..AudioConfig::default()
     };
-
     let mut audio = AudioPipeline::new(config);
-    audio
-        .start()
-        .map_err(|e| format!("Failed to start audio: {}", e))?;
-
+    audio.start().map_err(|e| format!("Failed: {}", e))?;
     if !audio.is_running() {
-        return Err("Audio pipeline failed to start".to_string());
+        return Err("Audio failed".to_string());
     }
-
     {
         let mut audio_lock = state.audio.lock().await;
         *audio_lock = Some(audio);
     }
-
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 async fn stop_audio(state: tauri::State<'_, AppState>) -> Result<(), String> {
     let mut audio_lock = state.audio.lock().await;
     if let Some(audio) = audio_lock.as_mut() {
@@ -527,15 +429,11 @@ async fn stop_audio(state: tauri::State<'_, AppState>) -> Result<(), String> {
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 async fn get_audio_devices() -> Result<AudioDevices, String> {
     use agora_core::AudioDevice;
-
-    let input =
-        AudioDevice::input_devices().map_err(|e| format!("Failed to get input devices: {}", e))?;
-    let output = AudioDevice::output_devices()
-        .map_err(|e| format!("Failed to get output devices: {}", e))?;
-
+    let input = AudioDevice::input_devices().map_err(|e| format!("Failed: {}", e))?;
+    let output = AudioDevice::output_devices().map_err(|e| format!("Failed: {}", e))?;
     Ok(AudioDevices {
         input: input
             .into_iter()
@@ -558,27 +456,23 @@ async fn get_audio_devices() -> Result<AudioDevices, String> {
     })
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 async fn init_mixer(state: tauri::State<'_, AppState>) -> Result<(), String> {
     let peer_id = {
-        let id_lock = state.identity.lock().await;
-        id_lock
-            .as_ref()
+        let lock = state.identity.lock().await;
+        lock.as_ref()
             .map(|i| i.peer_id())
-            .ok_or_else(|| "Identity not initialized".to_string())?
+            .ok_or_else(|| "Not initialized".to_string())?
     };
-
     let mixer = MixerManager::new(peer_id, Some(MixerConfig::default()));
-
     {
         let mut mixer_lock = state.mixer.lock().await;
         *mixer_lock = Some(mixer);
     }
-
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 async fn add_participant(state: tauri::State<'_, AppState>, peer_id: String) -> Result<(), String> {
     {
         let mut mixer_lock = state.mixer.lock().await;
@@ -586,7 +480,6 @@ async fn add_participant(state: tauri::State<'_, AppState>, peer_id: String) -> 
             mixer.add_participant(peer_id.clone());
         }
     }
-
     {
         let mut participants = state.participants.lock().await;
         participants.insert(
@@ -600,11 +493,10 @@ async fn add_participant(state: tauri::State<'_, AppState>, peer_id: String) -> 
             },
         );
     }
-
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 async fn remove_participant(
     state: tauri::State<'_, AppState>,
     peer_id: String,
@@ -615,16 +507,14 @@ async fn remove_participant(
             mixer.remove_participant(&peer_id);
         }
     }
-
     {
         let mut participants = state.participants.lock().await;
         participants.remove(&peer_id);
     }
-
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 async fn get_mixer_status(state: tauri::State<'_, AppState>) -> Result<MixerStatus, String> {
     let mixer_lock = state.mixer.lock().await;
     if let Some(mixer) = mixer_lock.as_ref() {
@@ -647,7 +537,7 @@ async fn get_mixer_status(state: tauri::State<'_, AppState>) -> Result<MixerStat
     }
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 async fn get_room_info(state: tauri::State<'_, AppState>) -> Result<Option<RoomInfo>, String> {
     let room_lock = state.current_room.lock().await;
     Ok(room_lock.as_ref().map(|r| RoomInfo {
@@ -658,7 +548,7 @@ async fn get_room_info(state: tauri::State<'_, AppState>) -> Result<Option<RoomI
     }))
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 async fn get_participants(
     state: tauri::State<'_, AppState>,
 ) -> Result<Vec<ParticipantInfo>, String> {
@@ -666,20 +556,17 @@ async fn get_participants(
     Ok(participants.values().cloned().collect())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 async fn set_muted(state: tauri::State<'_, AppState>, is_muted: bool) -> Result<(), String> {
     let peer_id = {
-        let id_lock = state.identity.lock().await;
-        id_lock
-            .as_ref()
+        let lock = state.identity.lock().await;
+        lock.as_ref()
             .map(|i| i.peer_id())
-            .ok_or_else(|| "Identity not initialized".to_string())?
+            .ok_or_else(|| "Not initialized".to_string())?
     };
-
     let parsed_peer_id = peer_id
         .parse()
-        .map_err(|e| format!("Invalid peer ID format: {}", e))?;
-
+        .map_err(|e| format!("Invalid peer ID: {}", e))?;
     let cmd_lock = state.network_command.lock().await;
     if let Some(cmd_tx) = cmd_lock.as_ref() {
         let msg = ControlMessage::mute_changed(peer_id.clone(), is_muted);
@@ -689,91 +576,66 @@ async fn set_muted(state: tauri::State<'_, AppState>, is_muted: bool) -> Result<
                 message: msg,
             })
             .await
-            .map_err(|e| format!("Failed to send mute command: {}", e))?;
+            .map_err(|e| format!("Failed: {}", e))?;
     }
-
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 async fn export_identity(state: tauri::State<'_, AppState>) -> Result<String, String> {
-    let id_lock = state.identity.lock().await;
-    let identity = id_lock
-        .as_ref()
-        .ok_or_else(|| "Identity not initialized".to_string())?;
-
+    let lock = state.identity.lock().await;
+    let identity = lock.as_ref().ok_or_else(|| "Not initialized".to_string())?;
     let bytes = identity.to_bytes();
-    let display_name = identity.display_name().map(|s| s.to_string());
-    let peer_id = identity.peer_id();
-
-    let export_data = serde_json::json!({
-        "version": 1,
-        "peer_id": peer_id,
-        "key_bytes": base64::Engine::encode(&base64::engine::general_purpose::STANDARD, bytes),
-        "display_name": display_name,
-    });
-
+    let export_data = serde_json::json!({ "version": 1, "peer_id": identity.peer_id(), "key_bytes": base64::Engine::encode(&base64::engine::general_purpose::STANDARD, bytes), "display_name": identity.display_name() });
     Ok(export_data.to_string())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 async fn import_identity(state: tauri::State<'_, AppState>, json: String) -> Result<(), String> {
     let data: serde_json::Value =
         serde_json::from_str(&json).map_err(|e| format!("Invalid JSON: {}", e))?;
-
     let key_bytes_str = data["key_bytes"]
         .as_str()
-        .ok_or_else(|| "Missing key_bytes field".to_string())?;
+        .ok_or_else(|| "Missing key_bytes".to_string())?;
     let key_bytes =
         base64::Engine::decode(&base64::engine::general_purpose::STANDARD, key_bytes_str)
             .map_err(|e| format!("Invalid base64: {}", e))?;
-
-    let mut identity = agora_core::Identity::from_bytes(&key_bytes)
-        .map_err(|e| format!("Failed to restore identity: {}", e))?;
-
+    let mut identity =
+        agora_core::Identity::from_bytes(&key_bytes).map_err(|e| format!("Failed: {}", e))?;
     if let Some(name) = data["display_name"].as_str() {
         identity.set_display_name(name.to_string());
     }
-
-    let mut id_lock = state.identity.lock().await;
-    *id_lock = Some(identity);
-
+    let mut lock = state.identity.lock().await;
+    *lock = Some(identity);
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 async fn save_settings(
     app: AppHandle,
     state: tauri::State<'_, AppState>,
     settings: serde_json::Value,
 ) -> Result<(), String> {
     let app_settings: AppSettings =
-        serde_json::from_value(settings).map_err(|e| format!("Invalid settings: {}", e))?;
-
+        serde_json::from_value(settings).map_err(|e| format!("Invalid: {}", e))?;
     {
         let mut settings_lock = state.settings.lock().await;
         *settings_lock = app_settings.clone();
     }
-
     let config_dir = app
         .path()
         .app_config_dir()
-        .map_err(|e| format!("Failed to get config dir: {}", e))?;
-
-    std::fs::create_dir_all(&config_dir)
-        .map_err(|e| format!("Failed to create config dir: {}", e))?;
-
-    let settings_path = config_dir.join("settings.json");
-    let settings_json = serde_json::to_string_pretty(&app_settings)
-        .map_err(|e| format!("Failed to serialize settings: {}", e))?;
-
-    std::fs::write(&settings_path, settings_json)
-        .map_err(|e| format!("Failed to write settings: {}", e))?;
-
+        .map_err(|e| format!("Failed: {}", e))?;
+    std::fs::create_dir_all(&config_dir).map_err(|e| format!("Failed: {}", e))?;
+    std::fs::write(
+        config_dir.join("settings.json"),
+        serde_json::to_string_pretty(&app_settings).map_err(|e| format!("Failed: {}", e))?,
+    )
+    .map_err(|e| format!("Failed: {}", e))?;
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 async fn load_settings(
     app: AppHandle,
     state: tauri::State<'_, AppState>,
@@ -781,74 +643,56 @@ async fn load_settings(
     let config_dir = app
         .path()
         .app_config_dir()
-        .map_err(|e| format!("Failed to get config dir: {}", e))?;
-
+        .map_err(|e| format!("Failed: {}", e))?;
     let settings_path = config_dir.join("settings.json");
-
     let settings = if settings_path.exists() {
-        let settings_json = std::fs::read_to_string(&settings_path)
-            .map_err(|e| format!("Failed to read settings: {}", e))?;
-        let app_settings: AppSettings = serde_json::from_str(&settings_json)
-            .map_err(|e| format!("Failed to parse settings: {}", e))?;
-
+        let json = std::fs::read_to_string(&settings_path).map_err(|e| format!("Failed: {}", e))?;
+        let app_settings: AppSettings =
+            serde_json::from_str(&json).map_err(|e| format!("Failed: {}", e))?;
         {
             let mut settings_lock = state.settings.lock().await;
             *settings_lock = app_settings.clone();
         }
-
         app_settings
     } else {
-        let settings_lock = state.settings.lock().await;
-        settings_lock.clone()
+        state.settings.lock().await.clone()
     };
-
-    serde_json::to_value(settings).map_err(|e| format!("Failed to serialize settings: {}", e))
+    serde_json::to_value(settings).map_err(|e| format!("Failed: {}", e))
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 async fn get_settings(state: tauri::State<'_, AppState>) -> Result<serde_json::Value, String> {
-    let settings_lock = state.settings.lock().await;
-    let settings = settings_lock.clone();
-
-    serde_json::to_value(settings).map_err(|e| format!("Failed to serialize settings: {}", e))
+    serde_json::to_value(state.settings.lock().await.clone()).map_err(|e| format!("Failed: {}", e))
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 async fn get_network_info(state: tauri::State<'_, AppState>) -> Result<NetworkInfo, String> {
-    let id_lock = state.identity.lock().await;
-    let peer_id = id_lock
-        .as_ref()
-        .map(|i| i.peer_id())
-        .ok_or_else(|| "Identity not initialized".to_string())?;
-    drop(id_lock);
-
-    let listen_addrs = state.listen_addrs.lock().await.clone();
-    let connected_peers = state.connected_peers.lock().await.clone();
-
+    let peer_id = {
+        let lock = state.identity.lock().await;
+        lock.as_ref()
+            .map(|i| i.peer_id())
+            .ok_or_else(|| "Not initialized".to_string())?
+    };
     Ok(NetworkInfo {
         peer_id,
-        listen_addrs,
-        connected_peers,
+        listen_addrs: state.listen_addrs.lock().await.clone(),
+        connected_peers: state.connected_peers.lock().await.clone(),
     })
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 async fn connect_peer(state: tauri::State<'_, AppState>, addr: String) -> Result<(), String> {
-    tracing::info!("[NETWORK] Connecting to peer: {}", addr);
-
     let multiaddr: agora_core::Multiaddr = addr
         .parse()
-        .map_err(|e| format!("Invalid address format: {}", e))?;
-
+        .map_err(|e| format!("Invalid address: {}", e))?;
     let cmd_lock = state.network_command.lock().await;
     if let Some(cmd_tx) = cmd_lock.as_ref() {
         cmd_tx
             .send(NetworkCommand::ConnectToPeer { addr: multiaddr })
             .await
-            .map_err(|e| format!("Failed to connect: network unavailable - {}", e))?;
-        tracing::info!("[NETWORK] Connection request sent");
+            .map_err(|e| format!("Failed: {}", e))?;
         Ok(())
     } else {
-        Err("Network not started. Please start the network first.".to_string())
+        Err("Network not started".to_string())
     }
 }
