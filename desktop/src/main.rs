@@ -161,12 +161,18 @@ fn main() {
 
 #[tauri::command]
 async fn init_identity(state: tauri::State<'_, AppState>) -> Result<String, String> {
+    tracing::info!("[INIT] Generating new identity...");
     let identity = agora_core::Identity::generate()
-        .map_err(|e| format!("Failed to generate identity: {}", e))?;
+        .map_err(|e| {
+            tracing::error!("[INIT] Failed to generate identity: {}", e);
+            format!("Failed to generate identity: {}", e)
+        })?;
     let peer_id = identity.peer_id();
+    tracing::info!("[INIT] Identity generated: {}", peer_id);
 
     let mut id_lock = state.identity.lock().await;
     *id_lock = Some(identity);
+    tracing::info!("[INIT] Identity stored in state");
 
     Ok(peer_id)
 }

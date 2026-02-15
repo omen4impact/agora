@@ -956,29 +956,51 @@
         }
         
         async function setupEventListeners() {
-            await listen('peer-connected', (event) => {
-                const { peer_id, addr } = event.payload;
-                console.log('Peer connected:', peer_id);
-                state.connectedPeers.add(peer_id);
-                showToast(`Peer connected: ${peer_id.substring(0, 8)}...`);
-            });
+            console.log('[EVENTS] Setting up event listeners...');
             
-            await listen('peer-disconnected', (event) => {
-                const { peer_id } = event.payload;
-                console.log('Peer disconnected:', peer_id);
-                state.connectedPeers.delete(peer_id);
-                removeParticipant(peer_id);
-                showToast(`Peer disconnected`);
-            });
-            
-            await listen('providers-found', (event) => {
-                const { room_id, providers } = event.payload;
-                console.log('Providers found for room:', room_id, providers);
-                providers.forEach(peerId => {
-                    if (peerId !== state.peerId) {
+            try {
+                await listen('peer-connected', (event) => {
+                    const { peer_id, addr } = event.payload;
+                    console.log('Peer connected:', peer_id);
+                    state.connectedPeers.add(peer_id);
+                    showToast(`Peer connected: ${peer_id.substring(0, 8)}...`);
+                });
+                console.log('[EVENTS] peer-connected registered');
+                
+                await listen('peer-disconnected', (event) => {
+                    const { peer_id } = event.payload;
+                    console.log('Peer disconnected:', peer_id);
+                    state.connectedPeers.delete(peer_id);
+                    removeParticipant(peer_id);
+                    showToast(`Peer disconnected`);
+                });
+                console.log('[EVENTS] peer-disconnected registered');
+                
+                await listen('providers-found', (event) => {
+                    const { room_id, providers } = event.payload;
+                    console.log('Providers found for room:', room_id, providers);
+                    providers.forEach(peerId => {
+                        if (peerId !== state.peerId) {
+                            addParticipant({
+                                peerId: peerId,
+                                name: peerId.substring(0, 8),
+                                isSelf: false,
+                                isMixer: false,
+                                latency: Math.floor(Math.random() * 100) + 20,
+                                quality: 'good'
+                            });
+                        }
+                    });
+                });
+                console.log('[EVENTS] providers-found registered');
+                
+                await listen('room-joined', (event) => {
+                    const { room_id, peer_id } = event.payload;
+                    console.log('Peer joined room:', peer_id);
+                    if (peer_id !== state.peerId) {
                         addParticipant({
-                            peerId: peerId,
-                            name: peerId.substring(0, 8),
+                            peerId: peer_id,
+                            name: peer_id.substring(0, 8),
                             isSelf: false,
                             isMixer: false,
                             latency: Math.floor(Math.random() * 100) + 20,
@@ -986,68 +1008,72 @@
                         });
                     }
                 });
-            });
-            
-            await listen('room-joined', (event) => {
-                const { room_id, peer_id } = event.payload;
-                console.log('Peer joined room:', peer_id);
-                if (peer_id !== state.peerId) {
-                    addParticipant({
-                        peerId: peer_id,
-                        name: peer_id.substring(0, 8),
-                        isSelf: false,
-                        isMixer: false,
-                        latency: Math.floor(Math.random() * 100) + 20,
-                        quality: 'good'
-                    });
-                }
-            });
-            
-            await listen('room-left', (event) => {
-                const { room_id, peer_id } = event.payload;
-                console.log('Peer left room:', peer_id);
-                removeParticipant(peer_id);
-            });
-            
-            await listen('audio-received', (event) => {
-                const { peer_id, sequence } = event.payload;
-                const avatar = document.getElementById(`avatar-${peer_id}`);
-                if (avatar) {
-                    avatar.classList.add('speaking');
-                    setTimeout(() => avatar.classList.remove('speaking'), 200);
-                }
-            });
-            
-            await listen('nat-status', (event) => {
-                const { is_public } = event.payload;
-                console.log('NAT status:', is_public ? 'Public' : 'Behind NAT');
-                document.getElementById('networkStatus').textContent = 
-                    is_public ? '🌐 Public IP' : '🌐 Behind NAT (Hole-punching)';
-            });
-            
-            await listen('listening', (event) => {
-                const { addr } = event.payload;
-                console.log('Listening on:', addr);
-            });
-            
-            await listen('network-error', (event) => {
-                const { error } = event.payload;
-                console.error('Network error:', error);
-                showToast(`Network error: ${error}`);
-            });
+                console.log('[EVENTS] room-joined registered');
+                
+                await listen('room-left', (event) => {
+                    const { room_id, peer_id } = event.payload;
+                    console.log('Peer left room:', peer_id);
+                    removeParticipant(peer_id);
+                });
+                console.log('[EVENTS] room-left registered');
+                
+                await listen('audio-received', (event) => {
+                    const { peer_id, sequence } = event.payload;
+                    const avatar = document.getElementById(`avatar-${peer_id}`);
+                    if (avatar) {
+                        avatar.classList.add('speaking');
+                        setTimeout(() => avatar.classList.remove('speaking'), 200);
+                    }
+                });
+                console.log('[EVENTS] audio-received registered');
+                
+                await listen('nat-status', (event) => {
+                    const { is_public } = event.payload;
+                    console.log('NAT status:', is_public ? 'Public' : 'Behind NAT');
+                    document.getElementById('networkStatus').textContent = 
+                        is_public ? '🌐 Public IP' : '🌐 Behind NAT (Hole-punching)';
+                });
+                console.log('[EVENTS] nat-status registered');
+                
+                await listen('listening', (event) => {
+                    const { addr } = event.payload;
+                    console.log('Listening on:', addr);
+                });
+                console.log('[EVENTS] listening registered');
+                
+                await listen('network-error', (event) => {
+                    const { error } = event.payload;
+                    console.error('Network error:', error);
+                    showToast(`Network error: ${error}`);
+                });
+                console.log('[EVENTS] network-error registered');
+                
+                console.log('[EVENTS] All event listeners registered');
+            } catch (e) {
+                console.error('[EVENTS] Failed to register event listener:', e);
+                throw e;
+            }
         }
         
         async function init() {
+            console.log('[INIT] Starting initialization...');
             try {
+                console.log('[INIT] Setting up event listeners...');
                 await setupEventListeners();
+                console.log('[INIT] Event listeners set up, generating identity...');
+                
+                const startTime = Date.now();
                 state.peerId = await invoke('init_identity');
+                console.log(`[INIT] Identity generated in ${Date.now() - startTime}ms`);
+                
                 statusEl.classList.remove('disconnected');
                 statusTextEl.textContent = 'Ready';
                 peerIdDisplayEl.textContent = `Peer ID: ${state.peerId.substring(0, 20)}...`;
+                console.log('[INIT] Initialization complete');
             } catch (e) {
+                console.error('[INIT] Failed:', e);
                 statusTextEl.textContent = `Error: ${e}`;
                 statusEl.classList.add('disconnected');
-                console.error('Init failed:', e);
                 
                 const retryBtn = document.createElement('button');
                 retryBtn.className = 'btn btn-primary';
