@@ -985,6 +985,7 @@
                     const { peer_id, addr } = event.payload;
                     console.log('Peer connected:', peer_id);
                     state.connectedPeers.add(peer_id);
+                    document.getElementById('connectedPeersCount').textContent = ` 👥 ${state.connectedPeers.size} peer(s) connected`;
                     showToast(`Peer connected: ${peer_id.substring(0, 8)}...`);
                 });
                 console.log('[EVENTS] peer-connected registered');
@@ -993,6 +994,7 @@
                     const { peer_id } = event.payload;
                     console.log('Peer disconnected:', peer_id);
                     state.connectedPeers.delete(peer_id);
+                    document.getElementById('connectedPeersCount').textContent = ` 👥 ${state.connectedPeers.size} peer(s) connected`;
                     removeParticipant(peer_id);
                     showToast(`Peer disconnected`);
                 });
@@ -1254,10 +1256,47 @@
             }
         });
         
+        document.getElementById('copyAddressBtn').addEventListener('click', async () => {
+            const addr = document.getElementById('myAddress').textContent;
+            if (addr && addr !== 'Not connected') {
+                await navigator.clipboard.writeText(addr);
+                const btn = document.getElementById('copyAddressBtn');
+                btn.textContent = '✓ Copied!';
+                showToast('Address copied!');
+                setTimeout(() => btn.textContent = '📋 Copy Address', 2000);
+            }
+        });
+        
+        document.getElementById('connectPeerBtn').addEventListener('click', async () => {
+            const addr = document.getElementById('peerAddress').value.trim();
+            if (!addr) {
+                showToast('Please enter a peer address');
+                return;
+            }
+            try {
+                await invoke('connect_peer', { addr });
+                showToast('Connecting to peer...');
+                document.getElementById('peerAddress').value = '';
+            } catch (e) {
+                showToast(`Failed to connect: ${e}`);
+            }
+        });
+        
         async function startSession(roomInfo) {
             try {
                 const networkPeerId = await invoke('start_network', { listenPort: null });
                 console.log('Network started:', networkPeerId);
+                
+                // Get and display network info
+                try {
+                    const netInfo = await invoke('get_network_info');
+                    console.log('Network info:', netInfo);
+                    if (netInfo.listen_addrs && netInfo.listen_addrs.length > 0) {
+                        document.getElementById('myAddress').textContent = netInfo.listen_addrs[0];
+                    }
+                } catch (e) {
+                    console.error('Failed to get network info:', e);
+                }
                 
                 await invoke('start_audio', { noiseSuppression: true });
                 console.log('Audio started');
