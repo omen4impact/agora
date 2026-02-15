@@ -1,10 +1,13 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use agora_core::{AudioConfig, AudioPipeline, MixerConfig, MixerManager, NetworkCommand, NetworkEvent, NetworkNode, protocol::ControlMessage};
+use agora_core::{
+    protocol::ControlMessage, AudioConfig, AudioPipeline, MixerConfig, MixerManager,
+    NetworkCommand, NetworkEvent, NetworkNode,
+};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager};
-use tokio::sync::{Mutex, mpsc};
+use tokio::sync::{mpsc, Mutex};
 
 struct AppState {
     identity: Arc<Mutex<Option<agora_core::Identity>>>,
@@ -20,47 +23,101 @@ struct AppState {
 }
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
-struct AppSettings { audio: AudioSettings, network: NetworkSettings }
+struct AppSettings {
+    audio: AudioSettings,
+    network: NetworkSettings,
+}
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
-struct AudioSettings { input_device: Option<String>, output_device: Option<String>, noise_suppression: bool, input_volume: f32, output_volume: f32 }
+struct AudioSettings {
+    input_device: Option<String>,
+    output_device: Option<String>,
+    noise_suppression: bool,
+    input_volume: f32,
+    output_volume: f32,
+}
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
-struct NetworkSettings { listen_port: Option<u16>, bootstrap_nodes: Vec<String> }
+struct NetworkSettings {
+    listen_port: Option<u16>,
+    bootstrap_nodes: Vec<String>,
+}
 
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
-            audio: AudioSettings { input_device: None, output_device: None, noise_suppression: true, input_volume: 1.0, output_volume: 1.0 },
-            network: NetworkSettings { listen_port: None, bootstrap_nodes: vec![] },
+            audio: AudioSettings {
+                input_device: None,
+                output_device: None,
+                noise_suppression: true,
+                input_volume: 1.0,
+                output_volume: 1.0,
+            },
+            network: NetworkSettings {
+                listen_port: None,
+                bootstrap_nodes: vec![],
+            },
         }
     }
 }
 
 #[derive(Clone, serde::Serialize)]
-struct RoomState { id: String, name: Option<String>, link: String }
+struct RoomState {
+    id: String,
+    name: Option<String>,
+    link: String,
+}
 
 #[derive(Clone, serde::Serialize)]
-struct ParticipantInfo { peer_id: String, display_name: Option<String>, is_mixer: bool, is_muted: bool, latency_ms: u32 }
+struct ParticipantInfo {
+    peer_id: String,
+    display_name: Option<String>,
+    is_mixer: bool,
+    is_muted: bool,
+    latency_ms: u32,
+}
 
 #[derive(Clone, serde::Serialize)]
-struct RoomInfo { id: String, name: Option<String>, link: String, has_password: bool }
+struct RoomInfo {
+    id: String,
+    name: Option<String>,
+    link: String,
+    has_password: bool,
+}
 
 #[derive(Clone, serde::Serialize)]
-struct AudioDevices { input: Vec<AudioDeviceInfo>, output: Vec<AudioDeviceInfo> }
+struct AudioDevices {
+    input: Vec<AudioDeviceInfo>,
+    output: Vec<AudioDeviceInfo>,
+}
 
 #[derive(Clone, serde::Serialize)]
-struct AudioDeviceInfo { name: String, is_default: bool, channels: u16, sample_rate: u32 }
+struct AudioDeviceInfo {
+    name: String,
+    is_default: bool,
+    channels: u16,
+    sample_rate: u32,
+}
 
 #[derive(Clone, serde::Serialize)]
-struct MixerStatus { topology: String, participant_count: usize, current_mixer: Option<String>, is_local_mixer: bool, uptime_secs: Option<u64> }
+struct MixerStatus {
+    topology: String,
+    participant_count: usize,
+    current_mixer: Option<String>,
+    is_local_mixer: bool,
+    uptime_secs: Option<u64>,
+}
 
 #[derive(Clone, serde::Serialize)]
-struct NetworkInfo { peer_id: String, listen_addrs: Vec<String>, connected_peers: Vec<String> }
+struct NetworkInfo {
+    peer_id: String,
+    listen_addrs: Vec<String>,
+    connected_peers: Vec<String>,
+}
 
 fn main() {
     eprintln!("[MAIN] Starting Agora...");
-    
+
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
@@ -126,60 +183,129 @@ async fn init_identity(state: tauri::State<'_, AppState>) -> Result<String, Stri
 #[tauri::command(rename_all = "snake_case")]
 async fn get_peer_id(state: tauri::State<'_, AppState>) -> Result<String, String> {
     let lock = state.identity.lock().await;
-    lock.as_ref().map(|i| i.peer_id()).ok_or_else(|| "Not initialized".to_string())
+    lock.as_ref()
+        .map(|i| i.peer_id())
+        .ok_or_else(|| "Not initialized".to_string())
 }
 
 #[tauri::command(rename_all = "snake_case")]
 async fn get_display_name(state: tauri::State<'_, AppState>) -> Result<Option<String>, String> {
     let lock = state.identity.lock().await;
-    lock.as_ref().map(|i| i.display_name().map(|s| s.to_string())).ok_or_else(|| "Not initialized".to_string())
+    lock.as_ref()
+        .map(|i| i.display_name().map(|s| s.to_string()))
+        .ok_or_else(|| "Not initialized".to_string())
 }
 
 #[tauri::command(rename_all = "snake_case")]
 async fn set_display_name(state: tauri::State<'_, AppState>, name: String) -> Result<(), String> {
     let mut lock = state.identity.lock().await;
-    lock.as_mut().map(|i| i.set_display_name(name)).ok_or_else(|| "Not initialized".to_string())
+    lock.as_mut()
+        .map(|i| i.set_display_name(name))
+        .ok_or_else(|| "Not initialized".to_string())
 }
 
 #[tauri::command(rename_all = "snake_case")]
-async fn create_room(state: tauri::State<'_, AppState>, name: Option<String>, password: Option<String>) -> Result<RoomInfo, String> {
+async fn create_room(
+    state: tauri::State<'_, AppState>,
+    name: Option<String>,
+    password: Option<String>,
+) -> Result<RoomInfo, String> {
     let lock = state.identity.lock().await;
-    let peer_id = lock.as_ref().map(|i| i.peer_id()).ok_or_else(|| "Not initialized".to_string())?;
+    let peer_id = lock
+        .as_ref()
+        .map(|i| i.peer_id())
+        .ok_or_else(|| "Not initialized".to_string())?;
     drop(lock);
 
-    let config = agora_core::RoomConfig { name, password, max_participants: Some(20) };
+    let config = agora_core::RoomConfig {
+        name,
+        password,
+        max_participants: Some(20),
+    };
     let room = agora_core::Room::new(peer_id, config);
-    let info = RoomInfo { id: room.id.clone(), name: room.name.clone(), link: room.share_link(), has_password: room.has_password() };
+    let info = RoomInfo {
+        id: room.id.clone(),
+        name: room.name.clone(),
+        link: room.share_link(),
+        has_password: room.has_password(),
+    };
     let room_id = room.id.clone();
     let link = info.link.clone();
     let name_clone = room.name.clone();
 
-    { let mut room_lock = state.current_room.lock().await; *room_lock = Some(RoomState { id: room_id.clone(), name: name_clone, link: link.clone() }); }
-    { let cmd_lock = state.network_command.lock().await; if let Some(cmd_tx) = cmd_lock.as_ref() { let _ = cmd_tx.send(NetworkCommand::JoinRoom { room_id }).await; } }
+    {
+        let mut room_lock = state.current_room.lock().await;
+        *room_lock = Some(RoomState {
+            id: room_id.clone(),
+            name: name_clone,
+            link: link.clone(),
+        });
+    }
+    {
+        let cmd_lock = state.network_command.lock().await;
+        if let Some(cmd_tx) = cmd_lock.as_ref() {
+            let _ = cmd_tx.send(NetworkCommand::JoinRoom { room_id }).await;
+        }
+    }
 
     Ok(info)
 }
 
 #[tauri::command(rename_all = "snake_case")]
 async fn join_room(state: tauri::State<'_, AppState>, room_link: String) -> Result<String, String> {
-    let (room_id, _) = agora_core::room::parse_room_link(&room_link).ok_or_else(|| "Invalid link".to_string())?;
-    { let mut room_lock = state.current_room.lock().await; *room_lock = Some(RoomState { id: room_id.clone(), name: None, link: room_link }); }
-    { let cmd_lock = state.network_command.lock().await; if let Some(cmd_tx) = cmd_lock.as_ref() { let _ = cmd_tx.send(NetworkCommand::JoinRoom { room_id: room_id.clone() }).await; } }
+    let (room_id, _) =
+        agora_core::room::parse_room_link(&room_link).ok_or_else(|| "Invalid link".to_string())?;
+    {
+        let mut room_lock = state.current_room.lock().await;
+        *room_lock = Some(RoomState {
+            id: room_id.clone(),
+            name: None,
+            link: room_link,
+        });
+    }
+    {
+        let cmd_lock = state.network_command.lock().await;
+        if let Some(cmd_tx) = cmd_lock.as_ref() {
+            let _ = cmd_tx
+                .send(NetworkCommand::JoinRoom {
+                    room_id: room_id.clone(),
+                })
+                .await;
+        }
+    }
     Ok(room_id)
 }
 
 #[tauri::command(rename_all = "snake_case")]
-async fn start_network(state: tauri::State<'_, AppState>, app: AppHandle, listen_port: Option<u16>) -> Result<String, String> {
-    let listen_addr = listen_port.map(|p| format!("/ip4/0.0.0.0/tcp/{}", p)).unwrap_or_else(|| "/ip4/0.0.0.0/tcp/0".to_string());
-    let mut network = NetworkNode::new(Some(&listen_addr)).await.map_err(|e| format!("Failed: {}", e))?;
+async fn start_network(
+    state: tauri::State<'_, AppState>,
+    app: AppHandle,
+    listen_port: Option<u16>,
+) -> Result<String, String> {
+    let listen_addr = listen_port
+        .map(|p| format!("/ip4/0.0.0.0/tcp/{}", p))
+        .unwrap_or_else(|| "/ip4/0.0.0.0/tcp/0".to_string());
+    let mut network = NetworkNode::new(Some(&listen_addr))
+        .await
+        .map_err(|e| format!("Failed: {}", e))?;
     let peer_id = network.peer_id_string();
-    let listen_addrs: Vec<String> = network.listen_addrs().iter().map(|a| a.to_string()).collect();
+    let listen_addrs: Vec<String> = network
+        .listen_addrs()
+        .iter()
+        .map(|a| a.to_string())
+        .collect();
     let mut event_rx = network.subscribe_events();
     let cmd_tx = network.command_sender();
     let (_shutdown_tx, mut shutdown_rx) = mpsc::channel::<()>(1);
 
-    { let mut cmd_lock = state.network_command.lock().await; *cmd_lock = Some(cmd_tx.clone()); }
-    { let mut addrs_lock = state.listen_addrs.lock().await; *addrs_lock = listen_addrs; }
+    {
+        let mut cmd_lock = state.network_command.lock().await;
+        *cmd_lock = Some(cmd_tx.clone());
+    }
+    {
+        let mut addrs_lock = state.listen_addrs.lock().await;
+        *addrs_lock = listen_addrs;
+    }
 
     let connected_peers = state.connected_peers.clone();
     let app_handle = app.clone();
@@ -206,34 +332,68 @@ async fn start_network(state: tauri::State<'_, AppState>, app: AppHandle, listen
         }
     });
 
-    tokio::spawn(async move { network.run().await; });
-    { let mut handle_lock = state.network_handle.lock().await; *handle_lock = Some(handle); }
+    tokio::spawn(async move {
+        network.run().await;
+    });
+    {
+        let mut handle_lock = state.network_handle.lock().await;
+        *handle_lock = Some(handle);
+    }
     Ok(peer_id)
 }
 
 #[tauri::command(rename_all = "snake_case")]
 async fn stop_network(state: tauri::State<'_, AppState>) -> Result<(), String> {
-    { let cmd_lock = state.network_command.lock().await; if let Some(cmd_tx) = cmd_lock.as_ref() { let _ = cmd_tx.send(NetworkCommand::Stop).await; } }
-    { let mut handle_lock = state.network_handle.lock().await; if let Some(handle) = handle_lock.take() { handle.abort(); } }
-    { let mut room_lock = state.current_room.lock().await; *room_lock = None; }
-    { let mut participants = state.participants.lock().await; participants.clear(); }
+    {
+        let cmd_lock = state.network_command.lock().await;
+        if let Some(cmd_tx) = cmd_lock.as_ref() {
+            let _ = cmd_tx.send(NetworkCommand::Stop).await;
+        }
+    }
+    {
+        let mut handle_lock = state.network_handle.lock().await;
+        if let Some(handle) = handle_lock.take() {
+            handle.abort();
+        }
+    }
+    {
+        let mut room_lock = state.current_room.lock().await;
+        *room_lock = None;
+    }
+    {
+        let mut participants = state.participants.lock().await;
+        participants.clear();
+    }
     Ok(())
 }
 
 #[tauri::command(rename_all = "snake_case")]
-async fn start_audio(state: tauri::State<'_, AppState>, noise_suppression: bool) -> Result<(), String> {
-    let config = AudioConfig { enable_noise_suppression: noise_suppression, ..AudioConfig::default() };
+async fn start_audio(
+    state: tauri::State<'_, AppState>,
+    noise_suppression: bool,
+) -> Result<(), String> {
+    let config = AudioConfig {
+        enable_noise_suppression: noise_suppression,
+        ..AudioConfig::default()
+    };
     let mut audio = AudioPipeline::new(config);
     audio.start().map_err(|e| format!("Failed: {}", e))?;
-    if !audio.is_running() { return Err("Audio failed".to_string()); }
-    { let mut audio_lock = state.audio.lock().await; *audio_lock = Some(audio); }
+    if !audio.is_running() {
+        return Err("Audio failed".to_string());
+    }
+    {
+        let mut audio_lock = state.audio.lock().await;
+        *audio_lock = Some(audio);
+    }
     Ok(())
 }
 
 #[tauri::command(rename_all = "snake_case")]
 async fn stop_audio(state: tauri::State<'_, AppState>) -> Result<(), String> {
     let mut audio_lock = state.audio.lock().await;
-    if let Some(audio) = audio_lock.as_mut() { audio.stop(); }
+    if let Some(audio) = audio_lock.as_mut() {
+        audio.stop();
+    }
     *audio_lock = None;
     Ok(())
 }
@@ -244,30 +404,82 @@ async fn get_audio_devices() -> Result<AudioDevices, String> {
     let input = AudioDevice::input_devices().map_err(|e| format!("Failed: {}", e))?;
     let output = AudioDevice::output_devices().map_err(|e| format!("Failed: {}", e))?;
     Ok(AudioDevices {
-        input: input.into_iter().map(|d| AudioDeviceInfo { name: d.name, is_default: d.is_default, channels: d.channels, sample_rate: d.sample_rate }).collect(),
-        output: output.into_iter().map(|d| AudioDeviceInfo { name: d.name, is_default: d.is_default, channels: d.channels, sample_rate: d.sample_rate }).collect(),
+        input: input
+            .into_iter()
+            .map(|d| AudioDeviceInfo {
+                name: d.name,
+                is_default: d.is_default,
+                channels: d.channels,
+                sample_rate: d.sample_rate,
+            })
+            .collect(),
+        output: output
+            .into_iter()
+            .map(|d| AudioDeviceInfo {
+                name: d.name,
+                is_default: d.is_default,
+                channels: d.channels,
+                sample_rate: d.sample_rate,
+            })
+            .collect(),
     })
 }
 
 #[tauri::command(rename_all = "snake_case")]
 async fn init_mixer(state: tauri::State<'_, AppState>) -> Result<(), String> {
-    let peer_id = { let lock = state.identity.lock().await; lock.as_ref().map(|i| i.peer_id()).ok_or_else(|| "Not initialized".to_string())? };
+    let peer_id = {
+        let lock = state.identity.lock().await;
+        lock.as_ref()
+            .map(|i| i.peer_id())
+            .ok_or_else(|| "Not initialized".to_string())?
+    };
     let mixer = MixerManager::new(peer_id, Some(MixerConfig::default()));
-    { let mut mixer_lock = state.mixer.lock().await; *mixer_lock = Some(mixer); }
+    {
+        let mut mixer_lock = state.mixer.lock().await;
+        *mixer_lock = Some(mixer);
+    }
     Ok(())
 }
 
 #[tauri::command(rename_all = "snake_case")]
 async fn add_participant(state: tauri::State<'_, AppState>, peer_id: String) -> Result<(), String> {
-    { let mut mixer_lock = state.mixer.lock().await; if let Some(mixer) = mixer_lock.as_mut() { mixer.add_participant(peer_id.clone()); } }
-    { let mut participants = state.participants.lock().await; participants.insert(peer_id.clone(), ParticipantInfo { peer_id, display_name: None, is_mixer: false, is_muted: false, latency_ms: 0 }); }
+    {
+        let mut mixer_lock = state.mixer.lock().await;
+        if let Some(mixer) = mixer_lock.as_mut() {
+            mixer.add_participant(peer_id.clone());
+        }
+    }
+    {
+        let mut participants = state.participants.lock().await;
+        participants.insert(
+            peer_id.clone(),
+            ParticipantInfo {
+                peer_id,
+                display_name: None,
+                is_mixer: false,
+                is_muted: false,
+                latency_ms: 0,
+            },
+        );
+    }
     Ok(())
 }
 
 #[tauri::command(rename_all = "snake_case")]
-async fn remove_participant(state: tauri::State<'_, AppState>, peer_id: String) -> Result<(), String> {
-    { let mut mixer_lock = state.mixer.lock().await; if let Some(mixer) = mixer_lock.as_mut() { mixer.remove_participant(&peer_id); } }
-    { let mut participants = state.participants.lock().await; participants.remove(&peer_id); }
+async fn remove_participant(
+    state: tauri::State<'_, AppState>,
+    peer_id: String,
+) -> Result<(), String> {
+    {
+        let mut mixer_lock = state.mixer.lock().await;
+        if let Some(mixer) = mixer_lock.as_mut() {
+            mixer.remove_participant(&peer_id);
+        }
+    }
+    {
+        let mut participants = state.participants.lock().await;
+        participants.remove(&peer_id);
+    }
     Ok(())
 }
 
@@ -276,32 +488,64 @@ async fn get_mixer_status(state: tauri::State<'_, AppState>) -> Result<MixerStat
     let mixer_lock = state.mixer.lock().await;
     if let Some(mixer) = mixer_lock.as_ref() {
         let status = mixer.get_status();
-        Ok(MixerStatus { topology: format!("{:?}", status.topology), participant_count: status.participant_count, current_mixer: status.current_mixer.map(|s| s.to_string()), is_local_mixer: status.is_local_mixer, uptime_secs: status.uptime.map(|d| d.as_secs()) })
+        Ok(MixerStatus {
+            topology: format!("{:?}", status.topology),
+            participant_count: status.participant_count,
+            current_mixer: status.current_mixer.map(|s| s.to_string()),
+            is_local_mixer: status.is_local_mixer,
+            uptime_secs: status.uptime.map(|d| d.as_secs()),
+        })
     } else {
-        Ok(MixerStatus { topology: "NotInitialized".to_string(), participant_count: 0, current_mixer: None, is_local_mixer: false, uptime_secs: None })
+        Ok(MixerStatus {
+            topology: "NotInitialized".to_string(),
+            participant_count: 0,
+            current_mixer: None,
+            is_local_mixer: false,
+            uptime_secs: None,
+        })
     }
 }
 
 #[tauri::command(rename_all = "snake_case")]
 async fn get_room_info(state: tauri::State<'_, AppState>) -> Result<Option<RoomInfo>, String> {
     let room_lock = state.current_room.lock().await;
-    Ok(room_lock.as_ref().map(|r| RoomInfo { id: r.id.clone(), name: r.name.clone(), link: r.link.clone(), has_password: false }))
+    Ok(room_lock.as_ref().map(|r| RoomInfo {
+        id: r.id.clone(),
+        name: r.name.clone(),
+        link: r.link.clone(),
+        has_password: false,
+    }))
 }
 
 #[tauri::command(rename_all = "snake_case")]
-async fn get_participants(state: tauri::State<'_, AppState>) -> Result<Vec<ParticipantInfo>, String> {
+async fn get_participants(
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<ParticipantInfo>, String> {
     let participants = state.participants.lock().await;
     Ok(participants.values().cloned().collect())
 }
 
 #[tauri::command(rename_all = "snake_case")]
 async fn set_muted(state: tauri::State<'_, AppState>, is_muted: bool) -> Result<(), String> {
-    let peer_id = { let lock = state.identity.lock().await; lock.as_ref().map(|i| i.peer_id()).ok_or_else(|| "Not initialized".to_string())? };
-    let parsed_peer_id = peer_id.parse().map_err(|e| format!("Invalid peer ID: {}", e))?;
+    let peer_id = {
+        let lock = state.identity.lock().await;
+        lock.as_ref()
+            .map(|i| i.peer_id())
+            .ok_or_else(|| "Not initialized".to_string())?
+    };
+    let parsed_peer_id = peer_id
+        .parse()
+        .map_err(|e| format!("Invalid peer ID: {}", e))?;
     let cmd_lock = state.network_command.lock().await;
     if let Some(cmd_tx) = cmd_lock.as_ref() {
         let msg = ControlMessage::mute_changed(peer_id.clone(), is_muted);
-        cmd_tx.send(NetworkCommand::SendControl { peer_id: parsed_peer_id, message: msg }).await.map_err(|e| format!("Failed: {}", e))?;
+        cmd_tx
+            .send(NetworkCommand::SendControl {
+                peer_id: parsed_peer_id,
+                message: msg,
+            })
+            .await
+            .map_err(|e| format!("Failed: {}", e))?;
     }
     Ok(())
 }
@@ -317,34 +561,67 @@ async fn export_identity(state: tauri::State<'_, AppState>) -> Result<String, St
 
 #[tauri::command(rename_all = "snake_case")]
 async fn import_identity(state: tauri::State<'_, AppState>, json: String) -> Result<(), String> {
-    let data: serde_json::Value = serde_json::from_str(&json).map_err(|e| format!("Invalid JSON: {}", e))?;
-    let key_bytes_str = data["key_bytes"].as_str().ok_or_else(|| "Missing key_bytes".to_string())?;
-    let key_bytes = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, key_bytes_str).map_err(|e| format!("Invalid base64: {}", e))?;
-    let mut identity = agora_core::Identity::from_bytes(&key_bytes).map_err(|e| format!("Failed: {}", e))?;
-    if let Some(name) = data["display_name"].as_str() { identity.set_display_name(name.to_string()); }
+    let data: serde_json::Value =
+        serde_json::from_str(&json).map_err(|e| format!("Invalid JSON: {}", e))?;
+    let key_bytes_str = data["key_bytes"]
+        .as_str()
+        .ok_or_else(|| "Missing key_bytes".to_string())?;
+    let key_bytes =
+        base64::Engine::decode(&base64::engine::general_purpose::STANDARD, key_bytes_str)
+            .map_err(|e| format!("Invalid base64: {}", e))?;
+    let mut identity =
+        agora_core::Identity::from_bytes(&key_bytes).map_err(|e| format!("Failed: {}", e))?;
+    if let Some(name) = data["display_name"].as_str() {
+        identity.set_display_name(name.to_string());
+    }
     let mut lock = state.identity.lock().await;
     *lock = Some(identity);
     Ok(())
 }
 
 #[tauri::command(rename_all = "snake_case")]
-async fn save_settings(app: AppHandle, state: tauri::State<'_, AppState>, settings: serde_json::Value) -> Result<(), String> {
-    let app_settings: AppSettings = serde_json::from_value(settings).map_err(|e| format!("Invalid: {}", e))?;
-    { let mut settings_lock = state.settings.lock().await; *settings_lock = app_settings.clone(); }
-    let config_dir = app.path().app_config_dir().map_err(|e| format!("Failed: {}", e))?;
+async fn save_settings(
+    app: AppHandle,
+    state: tauri::State<'_, AppState>,
+    settings: serde_json::Value,
+) -> Result<(), String> {
+    let app_settings: AppSettings =
+        serde_json::from_value(settings).map_err(|e| format!("Invalid: {}", e))?;
+    {
+        let mut settings_lock = state.settings.lock().await;
+        *settings_lock = app_settings.clone();
+    }
+    let config_dir = app
+        .path()
+        .app_config_dir()
+        .map_err(|e| format!("Failed: {}", e))?;
     std::fs::create_dir_all(&config_dir).map_err(|e| format!("Failed: {}", e))?;
-    std::fs::write(config_dir.join("settings.json"), serde_json::to_string_pretty(&app_settings).map_err(|e| format!("Failed: {}", e))?).map_err(|e| format!("Failed: {}", e))?;
+    std::fs::write(
+        config_dir.join("settings.json"),
+        serde_json::to_string_pretty(&app_settings).map_err(|e| format!("Failed: {}", e))?,
+    )
+    .map_err(|e| format!("Failed: {}", e))?;
     Ok(())
 }
 
 #[tauri::command(rename_all = "snake_case")]
-async fn load_settings(app: AppHandle, state: tauri::State<'_, AppState>) -> Result<serde_json::Value, String> {
-    let config_dir = app.path().app_config_dir().map_err(|e| format!("Failed: {}", e))?;
+async fn load_settings(
+    app: AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let config_dir = app
+        .path()
+        .app_config_dir()
+        .map_err(|e| format!("Failed: {}", e))?;
     let settings_path = config_dir.join("settings.json");
     let settings = if settings_path.exists() {
         let json = std::fs::read_to_string(&settings_path).map_err(|e| format!("Failed: {}", e))?;
-        let app_settings: AppSettings = serde_json::from_str(&json).map_err(|e| format!("Failed: {}", e))?;
-        { let mut settings_lock = state.settings.lock().await; *settings_lock = app_settings.clone(); }
+        let app_settings: AppSettings =
+            serde_json::from_str(&json).map_err(|e| format!("Failed: {}", e))?;
+        {
+            let mut settings_lock = state.settings.lock().await;
+            *settings_lock = app_settings.clone();
+        }
         app_settings
     } else {
         state.settings.lock().await.clone()
@@ -359,16 +636,30 @@ async fn get_settings(state: tauri::State<'_, AppState>) -> Result<serde_json::V
 
 #[tauri::command(rename_all = "snake_case")]
 async fn get_network_info(state: tauri::State<'_, AppState>) -> Result<NetworkInfo, String> {
-    let peer_id = { let lock = state.identity.lock().await; lock.as_ref().map(|i| i.peer_id()).ok_or_else(|| "Not initialized".to_string())? };
-    Ok(NetworkInfo { peer_id, listen_addrs: state.listen_addrs.lock().await.clone(), connected_peers: state.connected_peers.lock().await.clone() })
+    let peer_id = {
+        let lock = state.identity.lock().await;
+        lock.as_ref()
+            .map(|i| i.peer_id())
+            .ok_or_else(|| "Not initialized".to_string())?
+    };
+    Ok(NetworkInfo {
+        peer_id,
+        listen_addrs: state.listen_addrs.lock().await.clone(),
+        connected_peers: state.connected_peers.lock().await.clone(),
+    })
 }
 
 #[tauri::command(rename_all = "snake_case")]
 async fn connect_peer(state: tauri::State<'_, AppState>, addr: String) -> Result<(), String> {
-    let multiaddr: agora_core::Multiaddr = addr.parse().map_err(|e| format!("Invalid address: {}", e))?;
+    let multiaddr: agora_core::Multiaddr = addr
+        .parse()
+        .map_err(|e| format!("Invalid address: {}", e))?;
     let cmd_lock = state.network_command.lock().await;
     if let Some(cmd_tx) = cmd_lock.as_ref() {
-        cmd_tx.send(NetworkCommand::ConnectToPeer { addr: multiaddr }).await.map_err(|e| format!("Failed: {}", e))?;
+        cmd_tx
+            .send(NetworkCommand::ConnectToPeer { addr: multiaddr })
+            .await
+            .map_err(|e| format!("Failed: {}", e))?;
         Ok(())
     } else {
         Err("Network not started".to_string())
