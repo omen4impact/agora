@@ -38,12 +38,12 @@ jobs:
           sudo apt-get install -y libasound2-dev libopus-dev
 
       - name: Install macOS dependencies
-        if: matrix.os == 'macos-latest' || matrix.os == 'macos-13'
+        if: matrix.os == 'macos-latest'
         run: |
           brew install opus pkg-config
 
       - name: Set macOS environment
-        if: matrix.os == 'macos-latest' || matrix.os == 'macos-13'
+        if: matrix.os == 'macos-latest'
         run: |
           echo "PKG_CONFIG_PATH=$(brew --prefix opus)/lib/pkgconfig" >> $GITHUB_ENV
 
@@ -72,55 +72,85 @@ jobs:
           name: agora-${{ matrix.target }}
           path: dist/agora-${{ matrix.target }}.*
 
-  build-mobile:
-    name: Build Mobile
-    runs-on: ubuntu-latest
-    continue-on-error: true
+  build-desktop:
+    name: Build Desktop ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+          - target: aarch64-apple-darwin
+            os: macos-latest
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Java 17
-        uses: actions/setup-java@v4
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
         with:
-          distribution: 'temurin'
-          java-version: '17'
+          targets: ${{ matrix.target }}
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Install Linux dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libopus-dev libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+      - name: Install macOS dependencies
+        if: matrix.os == 'macos-latest'
+        run: |
+          brew install opus pkg-config
+
+      - name: Set macOS environment
+        if: matrix.os == 'macos-latest'
+        run: |
+          echo "PKG_CONFIG_PATH=$(brew --prefix opus)/lib/pkgconfig" >> $GITHUB_ENV
+
+      - name: Build Desktop App
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          flutter-version: '3.24.0'
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Agora Desktop ${{ github.ref_name }}'
+          releaseBody: 'See CHANGELOG.md for details.'
+          releaseDraft: true
+          prerelease: true
+          args: --target ${{ matrix.target }}
 
-      - name: Build Android APK
-        working-directory: mobile
-        run: |
-          flutter pub get
-          flutter build apk --release
-
-      - name: Build Web
-        working-directory: mobile
-        run: |
-          flutter build web --release
-
-      - name: Prepare artifacts
+      - name: Find and rename artifacts (Linux)
+        if: matrix.os == 'ubuntu-latest'
         run: |
           mkdir -p dist
-          cp mobile/build/app/outputs/flutter-apk/app-release.apk dist/agora-android.apk || true
-          if [ -d "mobile/build/web" ]; then
-            cd mobile/build/web && zip -r ../../../dist/agora-web.zip . || true
-          fi
+          find target -name "*.deb" -exec cp {} dist/agora-desktop-amd64.deb \; || true
+          find target -name "*.AppImage" -exec cp {} dist/agora-desktop-x86_64.AppImage \; || true
+
+      - name: Find and rename artifacts (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          mkdir -p dist
+          find target -name "*.dmg" -exec cp {} dist/agora-desktop-aarch64.dmg \; || true
+          find target -name "*.app" -exec zip -r dist/agora-desktop-aarch64.app.zip {} \; || true
+
+      - name: Find and rename artifacts (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          mkdir dist
+          copy target\release\agora-desktop.exe dist\agora-desktop-x64.exe || true
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: agora-mobile
+          name: agora-desktop-${{ matrix.target }}
           path: dist/*
+          if-no-files-found: ignore
 
   release:
     name: Create Release
-    needs: [build-cli]
+    needs: [build-cli, build-desktop]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -144,24 +174,32 @@ jobs:
           body: |
             ## Agora ${{ github.ref_name }}
             
-            ### Downloads
+            ### Desktop App (Recommended)
+            | Platform | File |
+            |----------|------|
+            | Linux | `agora-desktop-x86_64.AppImage` |
+            | macOS | `agora-desktop-aarch64.dmg` |
+            | Windows | `agora-desktop-x64.exe` |
+            
+            ### CLI Tools (Advanced)
             | Platform | File |
             |----------|------|
             | Linux x64 | `agora-x86_64-unknown-linux-gnu.tar.gz` |
-            | macOS Intel | `agora-x86_64-apple-darwin.tar.gz` |
             | macOS ARM | `agora-aarch64-apple-darwin.tar.gz` |
             | Windows | `agora-x86_64-pc-windows-msvc.zip` |
-            | Android | `agora-android.apk` |
-            | Web | `agora-web.zip` |
             
-            ### Usage
+            ### Quick Start (Desktop)
             
-            **Linux/macOS:**
+            **Linux:**
             ```bash
-            tar -xzf agora-*.tar.gz
-            ./agora --help
-            ./agora-node --help
+            chmod +x agora-desktop-*.AppImage
+            ./agora-desktop-*.AppImage
+            ```
+            
+            **macOS:**
+            ```bash
+            open agora-desktop-*.dmg
             ```
             
             **Windows:**
-            Extract the zip and run `agora.exe` or `agora-node.exe`
+            Double-click `agora-desktop-x64.exe`
