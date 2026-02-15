@@ -175,11 +175,10 @@ fn main() {
 #[tauri::command]
 async fn init_identity(state: tauri::State<'_, AppState>) -> Result<String, String> {
     tracing::info!("[INIT] Generating new identity...");
-    let identity = agora_core::Identity::generate()
-        .map_err(|e| {
-            tracing::error!("[INIT] Failed to generate identity: {}", e);
-            format!("Failed to generate identity: {}", e)
-        })?;
+    let identity = agora_core::Identity::generate().map_err(|e| {
+        tracing::error!("[INIT] Failed to generate identity: {}", e);
+        format!("Failed to generate identity: {}", e)
+    })?;
     let peer_id = identity.peer_id();
     tracing::info!("[INIT] Identity generated: {}", peer_id);
 
@@ -314,7 +313,11 @@ async fn start_network(
         .map_err(|e| format!("Failed to start network: {}", e))?;
 
     let peer_id = network.peer_id_string();
-    let listen_addrs: Vec<String> = network.listen_addrs().iter().map(|a| a.to_string()).collect();
+    let listen_addrs: Vec<String> = network
+        .listen_addrs()
+        .iter()
+        .map(|a| a.to_string())
+        .collect();
     tracing::info!("[NETWORK] Started with peer_id: {}", peer_id);
     tracing::info!("[NETWORK] Listening on: {:?}", listen_addrs);
 
