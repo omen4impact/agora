@@ -908,6 +908,28 @@
                 <button class="copy-btn" id="copyRoomIdBtn">Copy Room ID</button>
             </div>
         </div>
+        
+        <div class="card" style="margin-top: 1rem;">
+            <div class="room-link-label">Your Address (share with others to connect)</div>
+            <div class="room-link-text" id="myAddress" style="font-size: 0.7rem; word-break: break-all;">Not connected</div>
+            <div class="room-link-actions">
+                <button class="copy-btn" id="copyAddressBtn">📋 Copy Address</button>
+            </div>
+        </div>
+        
+        <div class="card" style="margin-top: 0.5rem;">
+            <div class="input-group">
+                <label for="peerAddress">Connect to Peer (enter their address)</label>
+                <input type="text" id="peerAddress" placeholder="/ip4/192.168.1.100/tcp/12345/p2p/12D3KooW...">
+            </div>
+            <button class="btn btn-primary" id="connectPeerBtn" style="margin-top: 0.5rem;">🔗 Connect</button>
+        </div>
+        
+        <div class="card" style="margin-top: 0.5rem;">
+            <div class="session-info">
+                <span id="connectedPeersCount">👥 0 peers connected</span>
+            </div>
+        </div>
     </div>
 
     <script type="module">

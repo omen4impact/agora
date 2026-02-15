@@ -44,6 +44,7 @@ pub use identity::Identity;
 pub use mixer::{MixerConfig, MixerManager, MixerRole, Participant};
 pub use nat::{NatTraversal, NatType, ObservedAddr};
 pub use network::{NetworkCommand, NetworkEvent, NetworkNode};
+pub use libp2p::Multiaddr;
 pub use protocol::{
     AudioPacket, ControlMessage, ControlMessageType, EncryptedAudioPacket,
     ParticipantInfo as ProtocolParticipantInfo,

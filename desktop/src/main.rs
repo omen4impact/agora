@@ -18,6 +18,8 @@ struct AppState {
     current_room: Arc<Mutex<Option<RoomState>>>,
     participants: Arc<Mutex<HashMap<String, ParticipantInfo>>>,
     settings: Arc<Mutex<AppSettings>>,
+    listen_addrs: Arc<Mutex<Vec<String>>>,
+    connected_peers: Arc<Mutex<Vec<String>>>,
 }
 
 use tokio::sync::mpsc;
@@ -108,6 +110,13 @@ struct MixerStatus {
     uptime_secs: Option<u64>,
 }
 
+#[derive(Clone, serde::Serialize)]
+struct NetworkInfo {
+    peer_id: String,
+    listen_addrs: Vec<String>,
+    connected_peers: Vec<String>,
+}
+
 fn main() {
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
@@ -122,6 +131,8 @@ fn main() {
         current_room: Arc::new(Mutex::new(None)),
         participants: Arc::new(Mutex::new(HashMap::new())),
         settings: Arc::new(Mutex::new(AppSettings::default())),
+        listen_addrs: Arc::new(Mutex::new(Vec::new())),
+        connected_peers: Arc::new(Mutex::new(Vec::new())),
     };
 
     let result = tauri::Builder::default()
@@ -150,6 +161,8 @@ fn main() {
             save_settings,
             load_settings,
             get_settings,
+            get_network_info,
+            connect_peer,
         ])
         .run(tauri::generate_context!());
 
@@ -301,6 +314,10 @@ async fn start_network(
         .map_err(|e| format!("Failed to start network: {}", e))?;
 
     let peer_id = network.peer_id_string();
+    let listen_addrs: Vec<String> = network.listen_addrs().iter().map(|a| a.to_string()).collect();
+    tracing::info!("[NETWORK] Started with peer_id: {}", peer_id);
+    tracing::info!("[NETWORK] Listening on: {:?}", listen_addrs);
+
     let mut event_rx = network.subscribe_events();
     let cmd_tx = network.command_sender();
 
@@ -311,6 +328,12 @@ async fn start_network(
         *cmd_lock = Some(cmd_tx.clone());
     }
 
+    {
+        let mut addrs_lock = state.listen_addrs.lock().await;
+        *addrs_lock = listen_addrs;
+    }
+
+    let connected_peers = state.connected_peers.clone();
     let app_handle = app.clone();
     let handle = tokio::spawn(async move {
         loop {
@@ -327,6 +350,13 @@ async fn start_network(
                                             "addr": addr.to_string()
                                         }),
                                     );
+                                    {
+                                        let mut peers = connected_peers.lock().await;
+                                        let peer_str = peer_id.to_string();
+                                        if !peers.contains(&peer_str) {
+                                            peers.push(peer_str);
+                                        }
+                                    }
                                 }
                                 NetworkEvent::PeerDisconnected { peer_id } => {
                                     let _ = app_handle.emit(
@@ -335,6 +365,10 @@ async fn start_network(
                                             "peer_id": peer_id.to_string()
                                         }),
                                     );
+                                    {
+                                        let mut peers = connected_peers.lock().await;
+                                        peers.retain(|p| p != &peer_id.to_string());
+                                    }
                                 }
                                 NetworkEvent::ProvidersFound { room_id, providers } => {
                                     let _ = app_handle.emit("providers-found", serde_json::json!({
@@ -774,4 +808,44 @@ async fn get_settings(state: tauri::State<'_, AppState>) -> Result<serde_json::V
     let settings = settings_lock.clone();
 
     serde_json::to_value(settings).map_err(|e| format!("Failed to serialize settings: {}", e))
+}
+
+#[tauri::command]
+async fn get_network_info(state: tauri::State<'_, AppState>) -> Result<NetworkInfo, String> {
+    let id_lock = state.identity.lock().await;
+    let peer_id = id_lock
+        .as_ref()
+        .map(|i| i.peer_id())
+        .ok_or_else(|| "Identity not initialized".to_string())?;
+    drop(id_lock);
+
+    let listen_addrs = state.listen_addrs.lock().await.clone();
+    let connected_peers = state.connected_peers.lock().await.clone();
+
+    Ok(NetworkInfo {
+        peer_id,
+        listen_addrs,
+        connected_peers,
+    })
+}
+
+#[tauri::command]
+async fn connect_peer(state: tauri::State<'_, AppState>, addr: String) -> Result<(), String> {
+    tracing::info!("[NETWORK] Connecting to peer: {}", addr);
+
+    let multiaddr: agora_core::Multiaddr = addr
+        .parse()
+        .map_err(|e| format!("Invalid address format: {}", e))?;
+
+    let cmd_lock = state.network_command.lock().await;
+    if let Some(cmd_tx) = cmd_lock.as_ref() {
+        cmd_tx
+            .send(NetworkCommand::ConnectToPeer { addr: multiaddr })
+            .await
+            .map_err(|e| format!("Failed to connect: network unavailable - {}", e))?;
+        tracing::info!("[NETWORK] Connection request sent");
+        Ok(())
+    } else {
+        Err("Network not started. Please start the network first.".to_string())
+    }
 }
