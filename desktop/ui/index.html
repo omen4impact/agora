@@ -977,11 +977,11 @@
             setTimeout(() => toastEl.classList.remove('show'), duration);
         }
         
-        async function setupEventListeners() {
+        function setupEventListeners() {
             console.log('[EVENTS] Setting up event listeners...');
             
             try {
-                await listen('peer-connected', (event) => {
+                listen('peer-connected', (event) => {
                     const { peer_id, addr } = event.payload;
                     console.log('Peer connected:', peer_id);
                     state.connectedPeers.add(peer_id);
@@ -990,7 +990,7 @@
                 });
                 console.log('[EVENTS] peer-connected registered');
                 
-                await listen('peer-disconnected', (event) => {
+                listen('peer-disconnected', (event) => {
                     const { peer_id } = event.payload;
                     console.log('Peer disconnected:', peer_id);
                     state.connectedPeers.delete(peer_id);
@@ -1000,7 +1000,7 @@
                 });
                 console.log('[EVENTS] peer-disconnected registered');
                 
-                await listen('providers-found', (event) => {
+                listen('providers-found', (event) => {
                     const { room_id, providers } = event.payload;
                     console.log('Providers found for room:', room_id, providers);
                     providers.forEach(peerId => {
@@ -1018,7 +1018,7 @@
                 });
                 console.log('[EVENTS] providers-found registered');
                 
-                await listen('room-joined', (event) => {
+                listen('room-joined', (event) => {
                     const { room_id, peer_id } = event.payload;
                     console.log('Peer joined room:', peer_id);
                     if (peer_id !== state.peerId) {
@@ -1034,14 +1034,14 @@
                 });
                 console.log('[EVENTS] room-joined registered');
                 
-                await listen('room-left', (event) => {
+                listen('room-left', (event) => {
                     const { room_id, peer_id } = event.payload;
                     console.log('Peer left room:', peer_id);
                     removeParticipant(peer_id);
                 });
                 console.log('[EVENTS] room-left registered');
                 
-                await listen('audio-received', (event) => {
+                listen('audio-received', (event) => {
                     const { peer_id, sequence } = event.payload;
                     const avatar = document.getElementById(`avatar-${peer_id}`);
                     if (avatar) {
@@ -1051,7 +1051,7 @@
                 });
                 console.log('[EVENTS] audio-received registered');
                 
-                await listen('nat-status', (event) => {
+                listen('nat-status', (event) => {
                     const { is_public } = event.payload;
                     console.log('NAT status:', is_public ? 'Public' : 'Behind NAT');
                     document.getElementById('networkStatus').textContent = 
@@ -1059,13 +1059,13 @@
                 });
                 console.log('[EVENTS] nat-status registered');
                 
-                await listen('listening', (event) => {
+                listen('listening', (event) => {
                     const { addr } = event.payload;
                     console.log('Listening on:', addr);
                 });
                 console.log('[EVENTS] listening registered');
                 
-                await listen('network-error', (event) => {
+                listen('network-error', (event) => {
                     const { error } = event.payload;
                     console.error('Network error:', error);
                     showToast(`Network error: ${error}`);
@@ -1083,7 +1083,7 @@
             console.log('[INIT] Starting initialization...');
             try {
                 console.log('[INIT] Setting up event listeners...');
-                await setupEventListeners();
+                setupEventListeners();
                 console.log('[INIT] Event listeners set up, generating identity...');
                 
                 const startTime = Date.now();
