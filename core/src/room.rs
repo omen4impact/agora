@@ -136,8 +136,8 @@ fn verify_password_hash(password: &str, stored_hash: &str) -> bool {
 fn current_timestamp() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs()
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
 }
 
 pub fn parse_room_link(link: &str) -> Option<(String, Option<String>)> {

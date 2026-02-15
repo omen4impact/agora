@@ -466,7 +466,13 @@ impl AudioPipeline {
     }
 
     pub fn capture_frame(&mut self) -> Option<AudioFrame> {
-        let mut buffer = self.input_buffer.lock().unwrap();
+        let mut buffer = match self.input_buffer.lock() {
+            Ok(b) => b,
+            Err(e) => {
+                tracing::error!("Failed to lock input buffer: {}", e);
+                return None;
+            }
+        };
 
         if buffer.len() >= self.config.frame_size {
             let frame: Vec<f32> = buffer.drain(0..self.config.frame_size).collect();
@@ -478,7 +484,13 @@ impl AudioPipeline {
     }
 
     pub fn play_frame(&mut self, frame: AudioFrame) {
-        let mut buffer = self.output_buffer.lock().unwrap();
+        let mut buffer = match self.output_buffer.lock() {
+            Ok(b) => b,
+            Err(e) => {
+                tracing::error!("Failed to lock output buffer: {}", e);
+                return;
+            }
+        };
         buffer.extend(frame);
     }
 

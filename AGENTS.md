@@ -12,21 +12,24 @@ Agora is a decentralized P2P voice chat application. This file provides context 
 
 **Release:** v0.3.0-beta.1 - https://github.com/omen4impact/agora/releases/tag/v0.3.0-beta.1
 
-### Latest Fix (2026-02-15)
+### Latest Fix (2026-02-16)
 - ✅ Desktop App now works correctly with Tauri v2
 - ✅ Fixed `withGlobalTauri: true` for `window.__TAURI__` availability
 - ✅ Fixed snake_case argument naming for all invoke calls
 - ✅ All commands use `#[tauri::command(rename_all = "snake_case")]`
+- ✅ Improved error handling (no panics in room.rs and audio.rs)
+- ✅ Fixed flaky latency test (threshold 10ms → 20ms)
 
 ### Test Coverage
-- **Rust**: 243 tests passing (202 unit + 24 integration + 17 E2E + 14 node)
+- **Rust**: 265 tests passing (203 unit + 24 integration + 17 E2E + 14 node + 7 signaling)
 - **Flutter**: 16 tests passing
 - **Live Tests**: 29 manual tests passed (see docs/TEST_REPORT.md)
 
-### Security Audit (2026-02-15)
+### Security Audit (2026-02-16)
 - ✅ Migrated from unmaintained `bincode` to `postcard`
 - ✅ Password hashing with HKDF + random salt
 - ✅ FFI error handling (no panics)
+- ✅ Robust error handling in critical paths (room.rs, audio.rs)
 - ⚠️ Transitive dependency advisories documented in CI (Tauri/GTK, libp2p)
 
 ### Cycle 2.8 Progress:
